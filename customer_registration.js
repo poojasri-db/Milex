@@ -106,31 +106,42 @@ router.put("/update", async (req, res) => {
 
 router.get("/get", async (req, res) => {
     try {
-        const CUSTOMER_ID =
-            req.query.CUSTOMER_ID !== undefined
-                ? req.query.CUSTOMER_ID
-                : -1;
 
-        const USER_TYPE = req.query.USER_TYPE || "CUSTOMER";
+        const {
+            CUSTOMER_ID = -1,
+            USER_TYPE = "",
+            LIMIT = 10,
+            OFFSET = 0
+        } = req.query;
+
+        const limit = Math.max(1, parseInt(LIMIT, 10) || 10);
+        const offset = Math.max(0, parseInt(OFFSET, 10) || 0);
 
         const [result] = await db.query(
-            "CALL sp_m_customer_registration_get(?,?)",
+            "CALL sp_m_customer_registration_get(?, ?, ?, ?)",
             [
                 CUSTOMER_ID,
-                USER_TYPE
+                USER_TYPE,
+                limit,
+                offset
             ]
         );
 
-        res.json({
-            status: "SUCCESS",
+        res.status(200).json({
+            success: true,
+            message: "Customer registration details fetched successfully",
             data: result[0]
         });
 
     } catch (error) {
+
+        console.error("Get Customer Registration Error:", error);
+
         res.status(500).json({
-            status: "FAILED",
+            success: false,
             message: error.message
         });
+
     }
 });
 

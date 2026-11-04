@@ -58,9 +58,11 @@ router.post("/insert", async (req, res) => {
         );
 
         res.json({
-            status: "SUCCESS",
-            data: result[0]
-        });
+    status: "SUCCESS",
+    message: "Seller onboarding inserted successfully",
+    SELLER_ID: result[1][0].SELLER_ID,
+    USER_ID: result[1][0].USER_ID
+});
 
     } catch (error) {
         res.status(500).json({
@@ -150,32 +152,37 @@ router.put("/update", async (req, res) => {
 
 router.get("/get", async (req, res) => {
     try {
-        const SELLER_ID =
-            req.query.SELLER_ID !== undefined
-                ? req.query.SELLER_ID
-                : -1;
 
-        const USER_TYPE =
-            req.query.USER_TYPE || "SELLER";
+        const {
+            SELLER_ID = -1,
+            USER_TYPE = "",
+            LIMIT = 10,
+            OFFSET = 0
+        } = req.query;
 
         const [result] = await db.query(
-            "CALL sp_m_seller_onboarding_get(?,?)",
+            "CALL sp_m_seller_onboarding_get(?, ?, ?, ?)",
             [
                 SELLER_ID,
-                USER_TYPE
+                USER_TYPE,
+                LIMIT,
+                OFFSET
             ]
         );
 
-        res.json({
+        res.status(200).json({
             status: "SUCCESS",
+            message: "Seller onboarding details fetched successfully",
             data: result[0]
         });
 
     } catch (error) {
-        res.status(500).json({
+
+        res.status(400).json({
             status: "FAILED",
-            message: error.message
+            message: error.sqlMessage || error.message
         });
+
     }
 });
 
