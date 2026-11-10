@@ -1,17 +1,22 @@
 
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const db = require('./db');
+const db = require("./db");
+const authenticateToken = require("./auth_middleware");
 
+// ==========================================
 // INSERT PRODUCT
-router.post('/insert', async (req, res) => {
+// POST /api/products/insert
+// PROTECTED API
+// ==========================================
+
+router.post("/insert", authenticateToken, async (req, res) => {
     try {
         const {
             PRODUCT_NAME,
             CATEGORY_ID,
             SUB_CATEGORY_ID,
             BRAND_ID,
-            PRODUCT_VARIANT_ID,
             PRODUCT_IMAGE,
             PRODUCT_VIDEO,
             PRODUCT_DESCRIPTION,
@@ -27,18 +32,18 @@ router.post('/insert', async (req, res) => {
             LENGTH,
             WIDTH,
             HEIGHT,
-            SELLER_ID,
-            CREATED_BY
+            SELLER_ID
         } = req.body;
 
+        const CREATED_BY = req.user.USER_ID;
+
         const [result] = await db.query(
-            `CALL sp_m_products_insert(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            "CALL sp_m_products_insert(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             [
                 PRODUCT_NAME,
                 CATEGORY_ID,
                 SUB_CATEGORY_ID,
                 BRAND_ID,
-                PRODUCT_VARIANT_ID,
                 PRODUCT_IMAGE,
                 PRODUCT_VIDEO,
                 PRODUCT_DESCRIPTION,
@@ -60,22 +65,29 @@ router.post('/insert', async (req, res) => {
         );
 
         res.status(200).json({
-            success: true,
-            message: 'Product inserted successfully',
-            data: result[0]
+            status: true,
+            message: "Product inserted successfully",
+            data: result[0] || []
         });
 
     } catch (error) {
+        console.error("Product Insert Error:", error);
+
         res.status(500).json({
-            success: false,
-            message: error.sqlMessage || error.message
+            status: false,
+            message: error.sqlMessage || "Failed to insert product"
         });
     }
 });
 
 
+// ==========================================
 // UPDATE PRODUCT
-router.put('/update', async (req, res) => {
+// PUT /api/products/update
+// PROTECTED API
+// ==========================================
+
+router.put("/update", authenticateToken, async (req, res) => {
     try {
         const {
             PRODUCT_ID,
@@ -83,7 +95,6 @@ router.put('/update', async (req, res) => {
             CATEGORY_ID,
             SUB_CATEGORY_ID,
             BRAND_ID,
-            PRODUCT_VARIANT_ID,
             PRODUCT_IMAGE,
             PRODUCT_VIDEO,
             PRODUCT_DESCRIPTION,
@@ -99,19 +110,19 @@ router.put('/update', async (req, res) => {
             LENGTH,
             WIDTH,
             HEIGHT,
-            SELLER_ID,
-            UPDATED_BY
+            SELLER_ID
         } = req.body;
 
+        const UPDATED_BY = req.user.USER_ID;
+
         const [result] = await db.query(
-            `CALL sp_m_products_update(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            "CALL sp_m_products_update(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             [
                 PRODUCT_ID,
                 PRODUCT_NAME,
                 CATEGORY_ID,
                 SUB_CATEGORY_ID,
                 BRAND_ID,
-                PRODUCT_VARIANT_ID,
                 PRODUCT_IMAGE,
                 PRODUCT_VIDEO,
                 PRODUCT_DESCRIPTION,
@@ -133,33 +144,40 @@ router.put('/update', async (req, res) => {
         );
 
         res.status(200).json({
-            success: true,
-            message: 'Product updated successfully',
-            data: result[0]
+            status: true,
+            message: "Product updated successfully",
+            data: result[0] || []
         });
 
     } catch (error) {
+        console.error("Product Update Error:", error);
+
         res.status(500).json({
-            success: false,
-            message: error.sqlMessage || error.message
+            status: false,
+            message: error.sqlMessage || "Failed to update product"
         });
     }
 });
 
 
+// ==========================================
 // GET PRODUCTS
-router.get('/get', async (req, res) => {
+// GET /api/products/get
+// PUBLIC API
+// ==========================================
+
+router.get("/get", async (req, res) => {
     try {
         const {
-            PRODUCT_ID = '-1',
-            CATEGORY_ID = '-1',
-            BRAND_ID = '-1',
+            PRODUCT_ID = "-1",
+            CATEGORY_ID = "-1",
+            BRAND_ID = "-1",
             LIMIT = 10,
             OFFSET = 0
         } = req.query;
 
         const [result] = await db.query(
-            `CALL sp_m_products_get(?, ?, ?, ?, ?)`,
+            "CALL sp_m_products_get(?,?,?,?,?)",
             [
                 PRODUCT_ID,
                 CATEGORY_ID,
@@ -170,48 +188,59 @@ router.get('/get', async (req, res) => {
         );
 
         res.status(200).json({
-            success: true,
-            message: 'Product details fetched successfully',
-            data: result[0]
+            status: true,
+            message: "Product details fetched successfully",
+            data: result[0] || []
         });
 
     } catch (error) {
+        console.error("Product Get Error:", error);
+
         res.status(500).json({
-            success: false,
-            message: error.sqlMessage || error.message
+            status: false,
+            message: error.sqlMessage || "Failed to fetch products"
         });
     }
 });
 
 
-// DELETE PRODUCT
-router.delete('/delete', async (req, res) => {
+// ==========================================
+// DELETE PRODUCT (SOFT DELETE)
+// DELETE /api/products/delete
+// PROTECTED API
+// ==========================================
+
+router.delete("/delete", authenticateToken, async (req, res) => {
     try {
         const {
             PRODUCT_ID,
             CATEGORY_ID,
+            SUB_CATEGORY_ID,
             BRAND_ID
         } = req.body;
 
         const [result] = await db.query(
-            `CALL sp_m_products_delete(?, ?, ?)`,
+            "CALL sp_m_products_delete(?,?,?,?)",
             [
                 PRODUCT_ID,
                 CATEGORY_ID,
+                SUB_CATEGORY_ID,
                 BRAND_ID
             ]
         );
 
         res.status(200).json({
-            success: true,
-            message: 'Product deleted successfully',
-            data: result[0]
+            status: true,
+            message: "Product deactivated successfully",
+            data: result[0] || []
         });
 
     } catch (error) {
+        console.error("Product Delete Error:", error);
+
         res.status(500).json({
-            success: false,
-            message: error.sqlMessage || error.message
+            status: false,
+            message: error.sqlMessage || "Failed to deactivate product"
         });
     }
 });

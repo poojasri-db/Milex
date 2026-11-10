@@ -55,7 +55,7 @@ router.put("/update", async (req, res) => {
         const {
             VARIANT_ID, VARIANT_NAME, BARCODE, SIZE, COLOR, MATERIAL, WEIGHT,
             PRICE, STOCK_QUANTITY, VARIANT_IMAGE, PRODUCT_ID, SELLER_ID,
-            SELLER_NAME, UPDATED_BY
+            SELLER_NAME, STATUS, UPDATED_BY
         } = req.body || {};
 
         if (!VARIANT_ID || !PRODUCT_ID) {
@@ -66,11 +66,11 @@ router.put("/update", async (req, res) => {
         }
 
         const [result] = await db.query(
-            "CALL sp_o_product_variant_update(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "CALL sp_o_product_variant_update(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 VARIANT_ID, VARIANT_NAME, BARCODE, SIZE, COLOR, MATERIAL, WEIGHT,
                 PRICE, STOCK_QUANTITY, VARIANT_IMAGE, PRODUCT_ID, SELLER_ID,
-                SELLER_NAME, UPDATED_BY
+                SELLER_NAME, STATUS, UPDATED_BY
             ]
         );
 

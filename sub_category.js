@@ -95,37 +95,35 @@ router.put("/update", async (req, res) => {
 router.get("/get", async (req, res) => {
     try {
         const {
-            SUB_CATEGORY_ID = "-1",
-            CATEGORY_ID = "-1",
+            SUB_CATEGORY_ID = -1,
+            CATEGORY_ID = -1,
             LIMIT = 10,
             OFFSET = 0
         } = req.query;
 
-        const limit = Math.max(1, parseInt(LIMIT, 10) || 10);
-        const offset = Math.max(0, parseInt(OFFSET, 10) || 0);
-
         const [result] = await db.query(
             "CALL sp_m_sub_category_management_get(?,?,?,?)",
             [
-                SUB_CATEGORY_ID,
-                CATEGORY_ID,
-                limit,
-                offset
+                Number(SUB_CATEGORY_ID),
+                Number(CATEGORY_ID),
+                Number(LIMIT),
+                Number(OFFSET)
             ]
         );
 
-        return res.status(200).json({
+        res.status(200).json({
             status: true,
             message: "Sub categories fetched successfully",
-            data: result[0]
+            data: result[0] || []
         });
 
     } catch (error) {
-        console.error("Get Sub Category Error:", error);
+        console.error("Sub category GET error:", error);
 
-        return res.status(500).json({
+        res.status(500).json({
             status: false,
-            message: error.sqlMessage || error.message
+            message: "Failed to fetch sub categories",
+            error: error.message
         });
     }
 });

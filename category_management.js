@@ -100,24 +100,33 @@ router.delete("/delete", async (req, res) => {
     try {
         const { CATEGORY_ID } = req.body;
 
+        if (!CATEGORY_ID) {
+            return res.status(400).json({
+                status: false,
+                message: "CATEGORY_ID is required"
+            });
+        }
+
         const [result] = await db.query(
             "CALL sp_m_category_management_delete(?)",
             [CATEGORY_ID]
         );
 
-        res.status(200).json({
-            success: true,
-            message: "Category deleted successfully",
-            data: result[0]
+        return res.status(200).json({
+            status: true,
+            message: "Category deactivated successfully"
         });
 
     } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: error.sqlMessage || error.message
+        console.error("Category Delete Error:", error);
+
+        return res.status(500).json({
+            status: false,
+            message: error.sqlMessage || "Failed to deactivate category"
         });
     }
 });
+
 
 
 // ==========================================

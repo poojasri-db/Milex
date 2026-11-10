@@ -4,8 +4,8 @@ const router = express.Router();
 const db = require("./db");
 
 // ==========================================
-// BRAND INSERT
-// POST /api/brand/insert
+// INSERT BRAND
+// POST /api/brand_management/insert
 // ==========================================
 
 router.post("/insert", async (req, res) => {
@@ -33,28 +33,27 @@ router.post("/insert", async (req, res) => {
             ]
         );
 
-        return res.status(200).json({
-            success: true,
+        res.status(200).json({
+            status: true,
             message: "Brand inserted successfully",
-            data: result[0]
+            data: result[0] || []
         });
 
     } catch (error) {
         console.error("Brand Insert Error:", error);
 
-        return res.status(500).json({
-            success: false,
-            message: error.sqlMessage || error.message
+        res.status(500).json({
+            status: false,
+            message: error.sqlMessage || "Failed to insert brand"
         });
     }
 });
 
 
 // ==========================================
-// BRAND UPDATE
-// PUT /api/brand/update
+// UPDATE BRAND
+// PUT /api/brand_management/update
 // ==========================================
-
 router.put("/update", async (req, res) => {
     try {
         const {
@@ -82,74 +81,71 @@ router.put("/update", async (req, res) => {
             ]
         );
 
-        return res.status(200).json({
-            success: true,
+        res.status(200).json({
+            status: true,
             message: "Brand updated successfully",
-            data: result[0]
+            data: result[0] || []
         });
 
     } catch (error) {
         console.error("Brand Update Error:", error);
 
-        return res.status(500).json({
-            success: false,
-            message: error.sqlMessage || error.message
+        res.status(500).json({
+            status: false,
+            message: "Failed to update brand",
+            error: error.message
         });
     }
 });
 
 
 // ==========================================
-// BRAND GET
-// GET /api/brand/get
+// GET BRAND
+// GET /api/brand_management/get
 // ==========================================
-
 router.get("/get", async (req, res) => {
     try {
         const {
-            BRAND_ID = "-1",
-            CATEGORY_ID = "-1",
-            SUB_CATEGORY_ID = "-1",
+            BRAND_ID = -1,
+            CATEGORY_ID = -1,
+            SUB_CATEGORY_ID = -1,
             LIMIT = 10,
             OFFSET = 0
         } = req.query;
 
-        const limit = Math.max(1, parseInt(LIMIT, 10) || 10);
-        const offset = Math.max(0, parseInt(OFFSET, 10) || 0);
-
         const [result] = await db.query(
             "CALL sp_m_brand_management_get(?,?,?,?,?)",
             [
-                BRAND_ID,
-                CATEGORY_ID,
-                SUB_CATEGORY_ID,
-                limit,
-                offset
+                Number(BRAND_ID),
+                Number(CATEGORY_ID),
+                Number(SUB_CATEGORY_ID),
+                Number(LIMIT),
+                Number(OFFSET)
             ]
         );
 
-        return res.status(200).json({
-            success: true,
+        res.status(200).json({
+            status: true,
             message: "Brand details fetched successfully",
-            data: result[0]
+            data: result[0] || []
         });
 
     } catch (error) {
         console.error("Brand Get Error:", error);
 
-        return res.status(500).json({
-            success: false,
-            message: error.sqlMessage || error.message
+        res.status(500).json({
+            status: false,
+            message: "Failed to fetch brand details",
+            error: error.message
         });
     }
 });
 
 
 // ==========================================
-// BRAND DELETE (SOFT DEACTIVATE)
-// DELETE /api/brand/delete
+// DELETE BRAND (SOFT DELETE)
+// DELETE /api/brand_management/delete
 // ==========================================
-
 router.delete("/delete", async (req, res) => {
     try {
         const {
@@ -167,18 +163,19 @@ router.delete("/delete", async (req, res) => {
             ]
         );
 
-        return res.status(200).json({
-            success: true,
+        res.status(200).json({
+            status: true,
             message: "Brand deactivated successfully",
-            data: result[0]
+            data: result[0] || []
         });
 
     } catch (error) {
         console.error("Brand Delete Error:", error);
 
-        return res.status(500).json({
-            success: false,
-            message: error.sqlMessage || error.message
+        res.status(500).json({
+            status: false,
+            message: "Failed to deactivate brand",
+            error: error.message
         });
     }
 });

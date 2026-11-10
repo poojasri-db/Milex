@@ -1,3 +1,5 @@
+require("dotenv").config();
+
 const express = require("express");
 const app = express();
 
@@ -22,9 +24,23 @@ const status = require("./status");
 const categorymanagement = require("./category_management");
 const category = require("./category");
 const brandmanagement = require("./brand_management");
-const brand = require("./brand");
 const taxrate = require("./tax_rate");
 const subcategory = require("./sub_category");
+const productcode = require("./product_code");
+const documentverification = require("./document_verification");
+const sellerapprovereject = require("./seller_approve_reject");
+const colours = require("./colours");
+const sizes = require("./sizes");
+const materials = require("./materials");
+const sellerdashboard = require("./seller_dashboard");
+const datefilter = require("./date_filter");
+const orderdashboard = require("./order_dashboard");
+const allstatus = require("./all_status");
+const paymentstatus = require("./payment_status");
+const shippingstatus = require("./shipping_status");
+const ordercount = require("./order_count");
+const customeraddress = require("./customer_address");
+
 
 
 app.use("/api/seller_onboarding", sellerOnboarding);
@@ -46,9 +62,23 @@ app.use("/api/status", status);
 app.use("/api/category_management", categorymanagement);
 app.use("/api/category", category);
 app.use("/api/brand_management", brandmanagement);
-app.use("/api/brand", brand);
 app.use("/api/tax_rate", taxrate);
 app.use("/api/sub_category", subcategory);
+app.use("/api/product_code", productcode);
+app.use("/api/document_verification", documentverification);
+app.use("/api/seller_approve_reject", sellerapprovereject);
+app.use("/api/colours", colours);
+app.use("/api/sizes", sizes);
+app.use("/api/materials", materials);
+app.use("/api/seller_dashboard", sellerdashboard);
+app.use("/api/date_filter", datefilter);
+app.use("/api/order_dashboard", orderdashboard);
+app.use("/api/all_status", allstatus);
+app.use("/api/payment_status", paymentstatus);
+app.use("/api/shipping_status", shippingstatus);
+app.use("/api/order_count", ordercount);
+app.use("/api/colours", colours);
+app.use("/api/customer_address", customeraddress);
 
  
 
