@@ -5,15 +5,9 @@ const db = require("./db");
 const authenticateToken = require("./auth_middleware");
 
 // ==========================================
-// JWT AUTHENTICATION
-// ALL ROUTES REQUIRE LOGIN
-// ==========================================
-router.use(authenticateToken);
-
-
-// ==========================================
 // INSERT SELLER DOCUMENTS
 // POST /api/seller-documents/insert
+// PUBLIC API - NO TOKEN REQUIRED
 // ==========================================
 
 router.post("/insert", async (req, res) => {
@@ -36,25 +30,6 @@ router.post("/insert", async (req, res) => {
             });
         }
 
-        const userType = String(req.user.USER_TYPE || "").toUpperCase();
-
-        if (!["ADMIN", "SELLER"].includes(userType)) {
-            return res.status(403).json({
-                status: false,
-                message: "You are not authorized to insert seller documents"
-            });
-        }
-
-        if (
-            userType === "SELLER" &&
-            Number(req.user.SELLER_ID) !== Number(SELLER_ID)
-        ) {
-            return res.status(403).json({
-                status: false,
-                message: "You can only insert your own documents"
-            });
-        }
-
         const [result] = await db.query(
             "CALL sp_o_seller_documents_insert(?,?,?,?,?,?,?,?,?)",
             [
@@ -66,7 +41,7 @@ router.post("/insert", async (req, res) => {
                 BANK_PROOF,
                 OTHER_SUPPORTING_DOCUMENT,
                 SELLER_ID,
-                req.user.USER_ID
+                null
             ]
         );
 
@@ -87,6 +62,14 @@ router.post("/insert", async (req, res) => {
         });
     }
 });
+
+
+// ==========================================
+// JWT AUTHENTICATION
+// UPDATE, GET AND DELETE REQUIRE LOGIN
+// ==========================================
+
+router.use(authenticateToken);
 
 
 // ==========================================
@@ -167,6 +150,11 @@ router.put("/update", async (req, res) => {
 });
 
 
+// ==========================================
+// GET SELLER DOCUMENTS
+// GET /api/seller-documents/get
+// ADMIN + SELLER
+// ==========================================
 
 router.get("/get", authenticateToken, async (req, res) => {
     try {

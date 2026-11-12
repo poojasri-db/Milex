@@ -2,27 +2,15 @@
 const express = require("express");
 const router = express.Router();
 const db = require("./db");
-const authenticateToken = require("./auth_middleware");
 
 // ==========================================
 // BUSINESS TYPE GET
 // GET /api/business-type/get
-// ADMIN + SELLER
+// PUBLIC API - NO TOKEN REQUIRED
 // ==========================================
 
-router.get("/get", authenticateToken, async (req, res) => {
+router.get("/get", async (req, res) => {
     try {
-        const userType = String(req.user.USER_TYPE || "")
-            .trim()
-            .toUpperCase();
-
-        if (!["ADMIN", "SELLER"].includes(userType)) {
-            return res.status(403).json({
-                STATUS: "FAILURE",
-                MESSAGE: "Access denied. Admin or Seller only."
-            });
-        }
-
         const {
             BUSINESS_TYPE_ID = "-1"
         } = req.query;

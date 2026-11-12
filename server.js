@@ -43,6 +43,10 @@ const customeraddress = require("./customer_address");
 const returnrequest = require("./return_request");
 const returncount = require("./return_count");
 const returnreason = require("./return_reason");
+const allcategory = require("./all_category");
+const shoppingcart = require("./shopping_cart");
+const wishlist = require("./wishlist");
+const movetocart = require("./move_to_cart");
 
 
 
@@ -85,6 +89,10 @@ app.use("/api/customer_address", customeraddress);
 app.use("/api/return_request", returnrequest);
 app.use("/api/return_count", returncount);
 app.use("/api/return_reason", returnreason);
+app.use("/api/all_category", allcategory);
+app.use("/api/shopping_cart", shoppingcart);
+app.use("/api/wishlist", wishlist);
+app.use("/api/move_to_cart", movetocart);
 
  
 

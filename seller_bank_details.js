@@ -5,14 +5,9 @@ const db = require("./db");
 const authenticateToken = require("./auth_middleware");
 
 // ==========================================
-// JWT AUTHENTICATION
-// ALL ROUTES REQUIRE LOGIN
-// ==========================================
-router.use(authenticateToken);
-
-// ==========================================
 // INSERT SELLER BANK DETAILS
 // POST /api/seller-bank-details/insert
+// PUBLIC API - NO TOKEN REQUIRED
 // ==========================================
 
 router.post("/insert", async (req, res) => {
@@ -37,19 +32,6 @@ router.post("/insert", async (req, res) => {
             });
         }
 
-        // Seller ownership validation
-        const userType = String(req.user.USER_TYPE || "").toUpperCase();
-
-        if (
-            userType === "SELLER" &&
-            Number(req.user.SELLER_ID) !== Number(SELLER_ID)
-        ) {
-            return res.status(403).json({
-                status: false,
-                message: "You can only add your own bank details"
-            });
-        }
-
         connection = await db.getConnection();
 
         const [results] = await connection.query(
@@ -63,7 +45,7 @@ router.post("/insert", async (req, res) => {
                 IFSC_CODE,
                 ACCOUNT_TYPE,
                 SELLER_ID,
-                req.user.USER_ID
+                null
             ]
         );
 
@@ -92,8 +74,17 @@ router.post("/insert", async (req, res) => {
 
 
 // ==========================================
+// JWT AUTHENTICATION
+// UPDATE, GET AND DELETE REQUIRE LOGIN
+// ==========================================
+
+router.use(authenticateToken);
+
+
+// ==========================================
 // UPDATE SELLER BANK DETAILS
 // PUT /api/seller-bank-details/update
+// ADMIN + SELLER
 // ==========================================
 
 router.put("/update", async (req, res) => {
@@ -165,6 +156,7 @@ router.put("/update", async (req, res) => {
 // ==========================================
 // GET SELLER BANK DETAILS
 // GET /api/seller-bank-details/get
+// ADMIN + SELLER
 // ==========================================
 
 router.get("/get", async (req, res) => {
@@ -187,7 +179,7 @@ router.get("/get", async (req, res) => {
                     message: "Seller account is not linked"
                 });
             }
-        } else if (!["ADMIN"].includes(userType)) {
+        } else if (userType !== "ADMIN") {
             return res.status(403).json({
                 status: false,
                 message: "You are not authorized to view bank details"
@@ -239,6 +231,7 @@ router.get("/get", async (req, res) => {
 // ==========================================
 // DELETE SELLER BANK DETAILS
 // DELETE /api/seller-bank-details/delete
+// ADMIN + SELLER
 // ==========================================
 
 router.delete("/delete", async (req, res) => {

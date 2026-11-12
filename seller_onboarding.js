@@ -166,6 +166,7 @@ router.post("/insert", async (req, res) => {
     }
 });
 
+
 // ==================================================
 // 2. UPDATE SELLER ONBOARDING
 // PUT /update
@@ -193,8 +194,7 @@ router.put("/update", authenticateToken, async (req, res) => {
                 });
             }
         } else {
-            // Seller ID is resolved from the authenticated user.
-            // Never trust SELLER_ID supplied by the seller.
+            // Seller ID is resolved from authenticated user.
             SELLER_ID = await getSellerIdByUserId(req.user.USER_ID);
 
             if (!SELLER_ID) {
@@ -221,13 +221,32 @@ router.put("/update", authenticateToken, async (req, res) => {
             BUSINESS_REGISTRATION_NUMBER,
             CONTACT_PERSON_NAME,
             CONTACT_PERSON_MOBILE,
-            CONTACT_PERSON_EMAIL
+            CONTACT_PERSON_EMAIL,
+            USER_PASSWORD
         } = req.body;
+
+        // Hash password only when a new password is provided
+        let hashedPassword = null;
+
+        if (USER_PASSWORD !== undefined && USER_PASSWORD !== null && USER_PASSWORD !== "") {
+
+            if (String(USER_PASSWORD).length < 8) {
+                return res.status(400).json({
+                    STATUS: "FAILED",
+                    MESSAGE: "Password must contain at least 8 characters"
+                });
+            }
+
+            hashedPassword = await bcrypt.hash(
+                String(USER_PASSWORD),
+                12
+            );
+        }
 
         const [result] = await db.query(
             `CALL sp_m_seller_onboarding_update(
                 ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?, ?
+                ?, ?, ?, ?, ?, ?, ?, ?, ?
             )`,
             [
                 SELLER_ID,
@@ -247,6 +266,7 @@ router.put("/update", authenticateToken, async (req, res) => {
                 CONTACT_PERSON_NAME || null,
                 CONTACT_PERSON_MOBILE ? String(CONTACT_PERSON_MOBILE) : null,
                 CONTACT_PERSON_EMAIL || null,
+                hashedPassword,
                 req.user.USER_ID
             ]
         );
@@ -265,6 +285,7 @@ router.put("/update", authenticateToken, async (req, res) => {
         });
     }
 });
+
 
 // ==================================================
 // 3. GET SELLER ONBOARDING
