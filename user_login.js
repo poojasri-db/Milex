@@ -7,152 +7,163 @@ const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const authenticateToken = require("./auth_middleware");
 
-// ==========================================
-// USER LOGIN
-// POST /api/user/login
-// ==========================================
+// JWT CONFIGURATION
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "10m";
+const REFRESH_TOKEN_DAYS = 7;
+
+// COOKIE CONFIGURATION
+const COOKIE_OPTIONS = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/api/user",
+    maxAge: REFRESH_TOKEN_DAYS * 24 * 60 * 60 * 1000
+};
+
+// GET REFRESH TOKEN FROM COOKIE
+function getRefreshToken(req) {
+    const cookieHeader = req.headers.cookie || "";
+
+    const refreshCookie = cookieHeader
+        .split(";")
+        .map(cookie => cookie.trim())
+        .find(cookie => cookie.startsWith("refreshToken="));
+
+    if (!refreshCookie) {
+        return null;
+    }
+
+    try {
+        return decodeURIComponent(
+            refreshCookie.substring("refreshToken=".length)
+        );
+    } catch (error) {
+        return null;
+    }
+}
+
+// HASH REFRESH TOKEN
+function hashRefreshToken(token) {
+    return crypto
+        .createHash("sha256")
+        .update(token)
+        .digest("hex");
+}
+
+// CREATE ACCESS TOKEN
+function createAccessToken(user, sessionId) {
+    return jwt.sign(
+        {
+            sid: sessionId,
+            role: user.USER_TYPE,
+            USER_TYPE_ID: user.USER_TYPE_ID
+        },
+        process.env.JWT_SECRET,
+        {
+            subject: String(user.USER_ID),
+            expiresIn: JWT_EXPIRES_IN,
+            issuer: process.env.JWT_ISSUER,
+            audience: process.env.JWT_AUDIENCE,
+            algorithm: "HS256"
+        }
+    );
+}
+
+// CHECK JWT CONFIGURATION
+function validateJwtConfig() {
+    if (
+        !process.env.JWT_SECRET ||
+        !process.env.JWT_ISSUER ||
+        !process.env.JWT_AUDIENCE
+    ) {
+        throw new Error("JWT configuration is missing in environment variables");
+    }
+}
+
+// --------------------------------------------------
+// LOGIN
+// PUBLIC API
+// --------------------------------------------------
 
 router.post("/login", async (req, res) => {
     try {
+        const { USER_NAME, USER_PASSWORD } = req.body;
 
-        const { USER_NAME, USER_PASSWORD } = req.body || {};
-
-        // ==========================================
-        // VALIDATION
-        // ==========================================
-
-        if (
-            typeof USER_NAME !== "string" ||
-            typeof USER_PASSWORD !== "string" ||
-            !USER_NAME.trim() ||
-            !USER_PASSWORD
-        ) {
+        if (!USER_NAME || !USER_PASSWORD) {
             return res.status(400).json({
-                status: "FAILED",
-                message: "Username and password are required"
+                success: false,
+                message: "USER_NAME and USER_PASSWORD are required"
             });
         }
 
-        // ==========================================
-        // CHECK JWT CONFIGURATION
-        // ==========================================
-
-        if (!process.env.JWT_SECRET) {
-            throw new Error("JWT_SECRET is missing in .env");
-        }
-
-        if (!process.env.JWT_ISSUER || !process.env.JWT_AUDIENCE) {
-            throw new Error("JWT issuer or audience is missing in .env");
-        }
-
-        // ==========================================
-        // GET USER DETAILS
-        // ==========================================
+        validateJwtConfig();
 
         const [result] = await db.query(
             "CALL sp_m_user_get_by_username(?)",
-            [USER_NAME.trim()]
+            [USER_NAME]
         );
 
         const user = result?.[0]?.[0];
 
         if (!user) {
             return res.status(401).json({
-                status: "FAILED",
+                success: false,
                 message: "Invalid username or password"
             });
         }
 
-        // ==========================================
-        // CHECK ACTIVE STATUS
-        // ==========================================
-
-        if (String(user.ACTIVE_STATUS).toUpperCase() !== "YES") {
+        if (user.ACTIVE_STATUS !== "YES") {
             return res.status(403).json({
-                status: "FAILED",
-                message: "User account is inactive"
+                success: false,
+                message: "Your account is inactive"
             });
         }
 
-        // ==========================================
-        // CHECK BCRYPT HASH
-        // ==========================================
-
-        if (
-            typeof user.USER_PASSWORD !== "string" ||
-            !/^\$2[aby]\$\d{2}\$/.test(user.USER_PASSWORD)
-        ) {
-            throw new Error("Stored password is not a valid bcrypt hash");
+        if (!user.USER_TYPE_ID) {
+            return res.status(403).json({
+                success: false,
+                message: "User type is not assigned"
+            });
         }
 
-        // ==========================================
-        // VERIFY PASSWORD
-        // ==========================================
+        const storedPassword = String(user.USER_PASSWORD || "");
 
-        const isPasswordValid = await bcrypt.compare(
+        const isBcryptHash =
+            /^\$2[aby]\$\d{2}\$/.test(storedPassword);
+
+        if (!isBcryptHash) {
+            return res.status(500).json({
+                success: false,
+                message: "Password is not stored in a valid encrypted format"
+            });
+        }
+
+        const passwordMatch = await bcrypt.compare(
             USER_PASSWORD,
-            user.USER_PASSWORD
+            storedPassword
         );
 
-        if (!isPasswordValid) {
+        if (!passwordMatch) {
             return res.status(401).json({
-                status: "FAILED",
+                success: false,
                 message: "Invalid username or password"
             });
         }
 
-        // ==========================================
-        // GENERATE SESSION ID
-        // ==========================================
-
+        // CREATE SESSION
         const sessionId = crypto.randomUUID();
 
-        // ==========================================
-        // GENERATE ACCESS TOKEN
-        // ==========================================
+        // CREATE ACCESS TOKEN
+        const accessToken = createAccessToken(user, sessionId);
 
-        const accessToken = jwt.sign(
-            {
-                sid: sessionId,
-                role: user.USER_TYPE
-            },
-            process.env.JWT_SECRET,
-            {
-                subject: String(user.USER_ID),
-                expiresIn: process.env.JWT_EXPIRES_IN || "10m",
-                issuer: process.env.JWT_ISSUER,
-                audience: process.env.JWT_AUDIENCE,
-                algorithm: "HS256"
-            }
-        );
+        // CREATE REFRESH TOKEN
+        const refreshToken = crypto
+            .randomBytes(64)
+            .toString("hex");
 
-        // ==========================================
-        // GENERATE REFRESH TOKEN
-        // ==========================================
+        const refreshTokenHash = hashRefreshToken(refreshToken);
 
-        const refreshToken = crypto.randomBytes(64).toString("hex");
-
-        // ==========================================
-        // HASH REFRESH TOKEN USING SHA-256
-        // ==========================================
-
-        const hashedRefreshToken = crypto
-            .createHash("sha256")
-            .update(refreshToken)
-            .digest("hex");
-
-        // ==========================================
-        // REFRESH TOKEN EXPIRY - 7 DAYS
-        // ==========================================
-
-        const refreshExpiry = new Date(
-            Date.now() + 7 * 24 * 60 * 60 * 1000
-        );
-
-        // ==========================================
-        // STORE REFRESH SESSION IN MYSQL
-        // ==========================================
-
+        // INSERT REFRESH SESSION
         await db.query(
             `INSERT INTO refresh_sessions
             (
@@ -162,166 +173,99 @@ router.post("/login", async (req, res) => {
                 expires_at,
                 ip_address
             )
-            VALUES (?, ?, ?, ?, ?)`,
+            VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL ? DAY), ?)`,
             [
                 sessionId,
                 user.USER_ID,
-                hashedRefreshToken,
-                refreshExpiry,
-                req.ip || null
+                refreshTokenHash,
+                REFRESH_TOKEN_DAYS,
+                req.ip
             ]
         );
 
-        // ==========================================
-        // SET HTTP-ONLY REFRESH TOKEN COOKIE
-        // ==========================================
-
-        res.cookie("refreshToken", refreshToken, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "lax",
-            path: "/api/user",
-            maxAge: 7 * 24 * 60 * 60 * 1000
-        });
-
-        // ==========================================
-        // SUCCESS RESPONSE
-        // ==========================================
+        // SET REFRESH TOKEN COOKIE
+        res.cookie(
+            "refreshToken",
+            refreshToken,
+            COOKIE_OPTIONS
+        );
 
         return res.status(200).json({
-            status: "SUCCESS",
+            success: true,
             message: "Login successful",
-            data: {
-                USER_ID: user.USER_ID,
-                USER_NAME: user.USER_NAME,
-                USER_TYPE: user.USER_TYPE,
-                USER_TYPE_ID: user.USER_TYPE_ID,
-                ACCESSTOKEN: accessToken
-            }
+            USER_ID: user.USER_ID,
+            USER_NAME: user.USER_NAME,
+            USER_TYPE: user.USER_TYPE,
+            USER_TYPE_ID: user.USER_TYPE_ID,
+            ACCESSTOKEN: accessToken
         });
 
     } catch (error) {
-
-        // ==========================================
-        // ERROR HANDLING
-        // ==========================================
-
-        console.error("LOGIN API ERROR:", error);
+        console.error("LOGIN ERROR:", error);
 
         return res.status(500).json({
-            status: "FAILED",
-            message: "Internal server error"
+            success: false,
+            message: "Login failed",
+            error: error.message
         });
     }
 });
 
-
-
-// ==========================================
-// REFRESH ACCESS TOKEN WITH ROTATION
-// POST /api/user/refresh
-// ==========================================
+// --------------------------------------------------
+// REFRESH ACCESS TOKEN
+// PUBLIC API
+// --------------------------------------------------
 
 router.post("/refresh", async (req, res) => {
-
     let connection;
-    let transactionStarted = false;
 
     try {
+        validateJwtConfig();
 
-        // ==========================================
-        // GET REFRESH TOKEN FROM COOKIE
-        // ==========================================
+        const refreshToken = getRefreshToken(req);
 
-        const cookieHeader = req.headers.cookie || "";
-
-        const refreshCookie = cookieHeader
-            .split(";")
-            .map(cookie => cookie.trim())
-            .find(cookie => cookie.startsWith("refreshToken="));
-
-        if (!refreshCookie) {
+        if (!refreshToken) {
             return res.status(401).json({
-                status: "FAILED",
+                success: false,
                 message: "Refresh token is missing"
             });
         }
 
-        const refreshToken = decodeURIComponent(
-            refreshCookie.substring("refreshToken=".length)
-        );
-
-        if (!refreshToken) {
-            return res.status(401).json({
-                status: "FAILED",
-                message: "Invalid refresh token"
-            });
-        }
-
-        // ==========================================
-        // CHECK JWT CONFIGURATION
-        // ==========================================
-
-        if (!process.env.JWT_SECRET) {
-            throw new Error("JWT_SECRET is missing in .env");
-        }
-
-        if (!process.env.JWT_ISSUER || !process.env.JWT_AUDIENCE) {
-            throw new Error("JWT issuer or audience is missing in .env");
-        }
-
-        // ==========================================
-        // HASH OLD REFRESH TOKEN
-        // ==========================================
-
-        const hashedRefreshToken = crypto
-            .createHash("sha256")
-            .update(refreshToken)
-            .digest("hex");
-
-        // ==========================================
-        // START DATABASE TRANSACTION
-        // ==========================================
+        const tokenHash = hashRefreshToken(refreshToken);
 
         connection = await db.getConnection();
 
         await connection.beginTransaction();
-        transactionStarted = true;
 
-        // ==========================================
-        // VERIFY OLD REFRESH SESSION
-        // ==========================================
-
+        // FIND ACTIVE REFRESH SESSION
         const [sessions] = await connection.query(
-            `SELECT
-                session_id,
-                user_id
+            `SELECT *
              FROM refresh_sessions
              WHERE token_hash = ?
              AND revoked_at IS NULL
              AND expires_at > NOW()
              LIMIT 1
              FOR UPDATE`,
-            [hashedRefreshToken]
+            [tokenHash]
         );
 
         const oldSession = sessions[0];
 
         if (!oldSession) {
-
             await connection.rollback();
-            transactionStarted = false;
+
+            res.clearCookie("refreshToken", {
+                ...COOKIE_OPTIONS,
+                maxAge: undefined
+            });
 
             return res.status(401).json({
-                status: "FAILED",
-                message: "Refresh token is invalid, expired or revoked"
+                success: false,
+                message: "Invalid or expired refresh token"
             });
         }
 
-        // ==========================================
-        // GET USER DETAILS
-        // ==========================================
-
+        // GET CURRENT USER DETAILS
         const [users] = await connection.query(
             `SELECT
                 USER_ID,
@@ -337,66 +281,57 @@ router.post("/refresh", async (req, res) => {
 
         const user = users[0];
 
-        if (!user) {
+        if (!user || user.ACTIVE_STATUS !== "YES") {
+            await connection.query(
+                `UPDATE refresh_sessions
+                 SET revoked_at = NOW()
+                 WHERE session_id = ?
+                 AND revoked_at IS NULL`,
+                [oldSession.session_id]
+            );
 
-            await connection.rollback();
-            transactionStarted = false;
+            await connection.commit();
 
-            return res.status(401).json({
-                status: "FAILED",
-                message: "User not found"
+            res.clearCookie("refreshToken", {
+                ...COOKIE_OPTIONS,
+                maxAge: undefined
             });
-        }
-
-        // ==========================================
-        // CHECK ACTIVE STATUS
-        // ==========================================
-
-        if (String(user.ACTIVE_STATUS).toUpperCase() !== "YES") {
-
-            await connection.rollback();
-            transactionStarted = false;
 
             return res.status(403).json({
-                status: "FAILED",
+                success: false,
                 message: "User account is inactive"
             });
         }
 
-        // ==========================================
-        // GENERATE NEW SESSION ID
-        // ==========================================
+        if (!user.USER_TYPE_ID) {
+            await connection.rollback();
 
+            return res.status(403).json({
+                success: false,
+                message: "User type is not assigned"
+            });
+        }
+
+        // CREATE NEW SESSION ID
         const newSessionId = crypto.randomUUID();
 
-        // ==========================================
-        // GENERATE NEW REFRESH TOKEN
-        // ==========================================
-
-        const newRefreshToken = crypto.randomBytes(64).toString("hex");
-
-        // ==========================================
-        // HASH NEW REFRESH TOKEN
-        // ==========================================
-
-        const newHashedRefreshToken = crypto
-            .createHash("sha256")
-            .update(newRefreshToken)
-            .digest("hex");
-
-        // ==========================================
-        // NEW REFRESH TOKEN EXPIRY - 7 DAYS
-        // ==========================================
-
-        const refreshExpiry = new Date(
-            Date.now() + 7 * 24 * 60 * 60 * 1000
+        // CREATE NEW ACCESS TOKEN WITH USER_TYPE_ID
+        const accessToken = createAccessToken(
+            user,
+            newSessionId
         );
 
-        // ==========================================
-        // REVOKE OLD REFRESH SESSION
-        // ==========================================
+        // ROTATE REFRESH TOKEN
+        const newRefreshToken = crypto
+            .randomBytes(64)
+            .toString("hex");
 
-        const [updateResult] = await connection.query(
+        const newRefreshTokenHash = hashRefreshToken(
+            newRefreshToken
+        );
+
+        // REVOKE OLD REFRESH SESSION
+        const [revokeResult] = await connection.query(
             `UPDATE refresh_sessions
              SET revoked_at = NOW()
              WHERE session_id = ?
@@ -404,14 +339,16 @@ router.post("/refresh", async (req, res) => {
             [oldSession.session_id]
         );
 
-        if (updateResult.affectedRows !== 1) {
-            throw new Error("Unable to revoke old refresh session");
+        if (revokeResult.affectedRows !== 1) {
+            await connection.rollback();
+
+            return res.status(401).json({
+                success: false,
+                message: "Refresh token has already been used"
+            });
         }
 
-        // ==========================================
         // INSERT NEW REFRESH SESSION
-        // ==========================================
-
         await connection.query(
             `INSERT INTO refresh_sessions
             (
@@ -421,196 +358,119 @@ router.post("/refresh", async (req, res) => {
                 expires_at,
                 ip_address
             )
-            VALUES (?, ?, ?, ?, ?)`,
+            VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL ? DAY), ?)`,
             [
                 newSessionId,
                 user.USER_ID,
-                newHashedRefreshToken,
-                refreshExpiry,
-                req.ip || null
+                newRefreshTokenHash,
+                REFRESH_TOKEN_DAYS,
+                req.ip
             ]
         );
 
-        // ==========================================
-        // GENERATE NEW ACCESS TOKEN
-        // ==========================================
+        await connection.commit();
 
-        const accessToken = jwt.sign(
-            {
-                sid: newSessionId,
-                role: user.USER_TYPE
-            },
-            process.env.JWT_SECRET,
-            {
-                subject: String(user.USER_ID),
-                expiresIn: process.env.JWT_EXPIRES_IN || "10m",
-                issuer: process.env.JWT_ISSUER,
-                audience: process.env.JWT_AUDIENCE,
-                algorithm: "HS256"
-            }
+        // SET NEW REFRESH TOKEN COOKIE
+        res.cookie(
+            "refreshToken",
+            newRefreshToken,
+            COOKIE_OPTIONS
         );
 
-        // ==========================================
-        // COMMIT TRANSACTION
-        // ==========================================
-
-        await connection.commit();
-        transactionStarted = false;
-
-        // ==========================================
-        // SET NEW HTTP-ONLY REFRESH TOKEN COOKIE
-        // ==========================================
-
-        res.cookie("refreshToken", newRefreshToken, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "lax",
-            path: "/api/user",
-            maxAge: 7 * 24 * 60 * 60 * 1000
-        });
-
-        // ==========================================
-        // SUCCESS RESPONSE
-        // ==========================================
-
         return res.status(200).json({
-            status: "SUCCESS",
-            message: "Access token refreshed successfully",
-            data: {
-                USER_ID: user.USER_ID,
-                USER_NAME: user.USER_NAME,
-                USER_TYPE: user.USER_TYPE,
-                USER_TYPE_ID: user.USER_TYPE_ID,
-                ACCESSTOKEN: accessToken
-            }
+            success: true,
+            message: "Token refreshed successfully",
+            USER_ID: user.USER_ID,
+            USER_NAME: user.USER_NAME,
+            USER_TYPE: user.USER_TYPE,
+            USER_TYPE_ID: user.USER_TYPE_ID,
+            ACCESSTOKEN: accessToken
         });
 
     } catch (error) {
-
-        // ==========================================
-        // ROLLBACK TRANSACTION
-        // ==========================================
-
-        if (connection && transactionStarted) {
+        if (connection) {
             await connection.rollback();
         }
 
-        console.error("REFRESH TOKEN API ERROR:", error);
+        console.error("REFRESH ERROR:", error);
 
         return res.status(500).json({
-            status: "FAILED",
-            message: "Internal server error"
+            success: false,
+            message: "Token refresh failed",
+            error: error.message
         });
 
     } finally {
-
         if (connection) {
             connection.release();
         }
     }
 });
 
-
-
-// ==========================================
-// USER LOGOUT
-// POST /api/user/logout
-// ==========================================
+// --------------------------------------------------
+// LOGOUT
+// PUBLIC API
+// --------------------------------------------------
 
 router.post("/logout", async (req, res) => {
-
     try {
+        const refreshToken = getRefreshToken(req);
 
-        // ==========================================
-        // GET REFRESH TOKEN FROM COOKIE
-        // ==========================================
+        if (refreshToken) {
+            const tokenHash = hashRefreshToken(refreshToken);
 
-        const cookieHeader = req.headers.cookie || "";
-
-        const refreshCookie = cookieHeader
-            .split(";")
-            .map(cookie => cookie.trim())
-            .find(cookie => cookie.startsWith("refreshToken="));
-
-        // ==========================================
-        // IF COOKIE EXISTS, REVOKE SESSION
-        // ==========================================
-
-        if (refreshCookie) {
-
-            const refreshToken = decodeURIComponent(
-                refreshCookie.substring("refreshToken=".length)
+            await db.query(
+                `UPDATE refresh_sessions
+                 SET revoked_at = NOW()
+                 WHERE token_hash = ?
+                 AND revoked_at IS NULL`,
+                [tokenHash]
             );
-
-            if (refreshToken) {
-
-                // ==========================================
-                // HASH REFRESH TOKEN USING SHA-256
-                // ==========================================
-
-                const hashedRefreshToken = crypto
-                    .createHash("sha256")
-                    .update(refreshToken)
-                    .digest("hex");
-
-                // ==========================================
-                // REVOKE REFRESH SESSION
-                // ==========================================
-
-                await db.query(
-                    `UPDATE refresh_sessions
-                     SET revoked_at = NOW()
-                     WHERE token_hash = ?
-                     AND revoked_at IS NULL`,
-                    [hashedRefreshToken]
-                );
-            }
         }
 
-        // ==========================================
-        // CLEAR REFRESH TOKEN COOKIE
-        // ==========================================
-
         res.clearCookie("refreshToken", {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "lax",
-            path: "/api/user"
+            ...COOKIE_OPTIONS,
+            maxAge: undefined
         });
 
-        // ==========================================
-        // SUCCESS RESPONSE
-        // ==========================================
-
         return res.status(200).json({
-            status: "SUCCESS",
+            success: true,
             message: "Logout successful"
         });
 
     } catch (error) {
-
-        // ==========================================
-        // ERROR HANDLING
-        // ==========================================
-
-        console.error("LOGOUT API ERROR:", error);
+        console.error("LOGOUT ERROR:", error);
 
         return res.status(500).json({
-            status: "FAILED",
-            message: "Internal server error"
+            success: false,
+            message: "Logout failed",
+            error: error.message
         });
     }
 });
 
+// --------------------------------------------------
+// PROFILE
+// PRIVATE API
+// --------------------------------------------------
 
-// TEST PROTECTED PROFILE API
 router.get("/profile", authenticateToken, async (req, res) => {
-    return res.status(200).json({
-        status: "SUCCESS",
-        message: "Authentication successful",
-        data: req.user
-    });
-});
+    try {
+        return res.status(200).json({
+            success: true,
+            message: "Profile fetched successfully",
+            user: req.user
+        });
 
+    } catch (error) {
+        console.error("PROFILE ERROR:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Unable to fetch profile",
+            error: error.message
+        });
+    }
+});
 
 module.exports = router;

@@ -1,27 +1,46 @@
+
 const express = require("express");
 const router = express.Router();
 const db = require("./db");
+const authenticateToken = require("./auth_middleware");
 
 // ==========================================
 // GET MATERIALS
 // GET /api/materials/get
+// ADMIN + SELLER
 // ==========================================
 
-router.get("/get", async (req, res) => {
+router.get("/get", authenticateToken, async (req, res) => {
     try {
+        const userType = String(req.user.USER_TYPE || "")
+            .trim()
+            .toUpperCase();
+
+        if (!["ADMIN", "SELLER"].includes(userType)) {
+            return res.status(403).json({
+                status: "FAILED",
+                message: "Access denied. Admin or Seller only."
+            });
+        }
+
         const {
-            MATERIAL_ID = -1,
-            LIMIT = 10,
-            OFFSET = 0
+            MATERIAL_ID = "-1",
+            LIMIT = "10",
+            OFFSET = "0"
         } = req.query;
 
+        const materialId = Number(MATERIAL_ID);
+        const limit = Number(LIMIT);
+        const offset = Number(OFFSET);
+
         if (
-            !Number.isInteger(Number(MATERIAL_ID)) ||
-            !Number.isInteger(Number(LIMIT)) ||
-            !Number.isInteger(Number(OFFSET)) ||
-            Number(MATERIAL_ID) < -1 ||
-            Number(LIMIT) <= 0 ||
-            Number(OFFSET) < 0
+            !Number.isSafeInteger(materialId) ||
+            (materialId !== -1 && materialId <= 0) ||
+            !Number.isInteger(limit) ||
+            limit <= 0 ||
+            limit > 100 ||
+            !Number.isSafeInteger(offset) ||
+            offset < 0
         ) {
             return res.status(400).json({
                 status: "FAILED",
@@ -32,15 +51,16 @@ router.get("/get", async (req, res) => {
         const [result] = await db.query(
             "CALL sp_m_materials_get(?,?,?)",
             [
-                Number(MATERIAL_ID),
-                Number(LIMIT),
-                Number(OFFSET)
+                materialId,
+                limit,
+                offset
             ]
         );
 
         return res.status(200).json({
             status: "SUCCESS",
-            data: result[0]
+            message: "Materials fetched successfully",
+            data: result[0] || []
         });
 
     } catch (error) {
@@ -48,7 +68,7 @@ router.get("/get", async (req, res) => {
 
         return res.status(500).json({
             status: "FAILED",
-            message: error.sqlMessage || "Internal server error"
+            message: error.sqlMessage || error.message
         });
     }
 });

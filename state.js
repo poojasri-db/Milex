@@ -1,32 +1,79 @@
 const express = require("express");
 const router = express.Router();
 const db = require("./db");
+const authenticateToken = require("./auth_middleware");
 
-router.get("/get", async (req, res) => {
+// ==========================================
+// GET STATE
+// GET /api/state/get
+// Access: ADMIN, SELLER, CUSTOMER
+// ==========================================
+
+router.get("/get", authenticateToken, async (req, res) => {
     try {
 
+        // ROLE VALIDATION
+        const userType = String(req.user.USER_TYPE || "")
+            .trim()
+            .toUpperCase();
+
+        if (!["ADMIN", "SELLER", "CUSTOMER"].includes(userType)) {
+            return res.status(403).json({
+                status: "FAILED",
+                message: "Access denied. Admin, Seller or Customer only."
+            });
+        }
+
+        // QUERY PARAMETERS
         const {
-            STATE_ID = -1,
-            COUNTRY_ID = -1
+            STATE_ID = "-1",
+            COUNTRY_ID = "-1"
         } = req.query;
 
+        const stateId = Number(STATE_ID);
+        const countryId = Number(COUNTRY_ID);
+
+        // VALIDATION
+        if (
+            !Number.isInteger(stateId) ||
+            (stateId !== -1 && stateId <= 0)
+        ) {
+            return res.status(400).json({
+                status: "FAILED",
+                message: "STATE_ID must be -1 or a positive integer"
+            });
+        }
+
+        if (
+            !Number.isInteger(countryId) ||
+            (countryId !== -1 && countryId <= 0)
+        ) {
+            return res.status(400).json({
+                status: "FAILED",
+                message: "COUNTRY_ID must be -1 or a positive integer"
+            });
+        }
+
+        // DATABASE CALL
         const [result] = await db.query(
             "CALL sp_m_state_get(?, ?)",
             [
-                STATE_ID,
-                COUNTRY_ID
+                stateId,
+                countryId
             ]
         );
 
-        res.status(200).json({
+        return res.status(200).json({
             status: "SUCCESS",
             message: "State details fetched successfully",
-            data: result[0]
+            data: result[0] || []
         });
 
     } catch (error) {
 
-        res.status(400).json({
+        console.error("GET STATE API ERROR:", error);
+
+        return res.status(500).json({
             status: "FAILED",
             message: error.sqlMessage || error.message
         });

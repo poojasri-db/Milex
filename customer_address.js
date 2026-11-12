@@ -2,12 +2,32 @@
 const express = require("express");
 const router = express.Router();
 const db = require("./db");
+const authenticateToken = require("./auth_middleware");
 
-// ==========================================
-// INSERT CUSTOMER ADDRESS
-// POST /api/customer_addresses/insert
-// ==========================================
+// All customer address APIs require a valid JWT token
+router.use(authenticateToken);
 
+
+// GET CUSTOMER_ID USING LOGGED-IN USER_ID
+async function getAuthenticatedCustomerId(USER_ID) {
+
+    const [rows] = await db.query(
+        `SELECT CUSTOMER_ID
+         FROM m_customer_registration
+         WHERE USER_ID = ?
+         LIMIT 1`,
+        [USER_ID]
+    );
+
+    if (rows.length === 0) {
+        return null;
+    }
+
+    return rows[0].CUSTOMER_ID;
+}
+
+
+// 1. INSERT CUSTOMER ADDRESS
 router.post("/insert", async (req, res) => {
     try {
 
@@ -22,70 +42,63 @@ router.post("/insert", async (req, res) => {
             STATE,
             COUNTRY,
             PINCODE,
-            DEFAULT_ADDRESS,
-            CUSTOMER_ID,
-            CREATED_BY
-        } = req.body || {};
+            DEFAULT_ADDRESS
+        } = req.body;
 
-        if (
-            !ADDRESS_TYPE ||
-            !FULL_NAME ||
-            !MOBILE_NUMBER ||
-            !ADDRESS_LINE_1 ||
-            !CITY ||
-            !STATE ||
-            !COUNTRY ||
-            !PINCODE ||
-            CUSTOMER_ID == null
-        ) {
-            return res.status(400).json({
+        // Get logged-in USER_ID from JWT
+        const USER_ID = req.user.USER_ID;
+
+        // Get CUSTOMER_ID from m_customer_registration
+        const CUSTOMER_ID = await getAuthenticatedCustomerId(USER_ID);
+
+        if (!CUSTOMER_ID) {
+            return res.status(403).json({
                 status: "FAILED",
-                message: "Required fields are missing"
+                message: "Customer account not found"
             });
         }
 
+        // CREATED_BY must come from JWT
+        const CREATED_BY = USER_ID;
+
         const [result] = await db.query(
-            "CALL sp_o_customer_addresses_insert(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            `CALL sp_o_customer_addresses_insert(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 ADDRESS_TYPE,
                 FULL_NAME,
                 MOBILE_NUMBER,
                 ADDRESS_LINE_1,
-                ADDRESS_LINE_2 || null,
-                LANDMARK || null,
+                ADDRESS_LINE_2,
+                LANDMARK,
                 CITY,
                 STATE,
                 COUNTRY,
                 PINCODE,
                 DEFAULT_ADDRESS ?? 0,
                 CUSTOMER_ID,
-                CREATED_BY || null
+                CREATED_BY
             ]
         );
 
-        return res.status(200).json({
+        return res.status(201).json({
             status: "SUCCESS",
-            message: "Customer address inserted successfully"
+            message: "Customer address inserted successfully",
+            data: result[0]
         });
 
     } catch (error) {
 
-        console.error("Customer Address Insert Error:", error);
+        console.error("Customer address insert error:", error);
 
         return res.status(500).json({
             status: "FAILED",
             message: error.sqlMessage || error.message
         });
-
     }
 });
 
 
-// ==========================================
-// UPDATE CUSTOMER ADDRESS
-// PUT /api/customer_addresses/update
-// ==========================================
-
+// 2. UPDATE CUSTOMER ADDRESS
 router.put("/update", async (req, res) => {
     try {
 
@@ -101,103 +114,121 @@ router.put("/update", async (req, res) => {
             STATE,
             COUNTRY,
             PINCODE,
-            DEFAULT_ADDRESS,
-            CUSTOMER_ID,
-            UPDATED_BY
-        } = req.body || {};
+            DEFAULT_ADDRESS
+        } = req.body;
 
-        if (
-            ADDRESS_ID == null ||
-            CUSTOMER_ID == null ||
-            !ADDRESS_TYPE ||
-            !FULL_NAME ||
-            !MOBILE_NUMBER ||
-            !ADDRESS_LINE_1 ||
-            !CITY ||
-            !STATE ||
-            !COUNTRY ||
-            !PINCODE
-        ) {
+        if (!ADDRESS_ID) {
             return res.status(400).json({
                 status: "FAILED",
-                message: "Required fields are missing"
+                message: "ADDRESS_ID is required"
             });
         }
 
+        const USER_ID = req.user.USER_ID;
+
+        const CUSTOMER_ID = await getAuthenticatedCustomerId(USER_ID);
+
+        if (!CUSTOMER_ID) {
+            return res.status(403).json({
+                status: "FAILED",
+                message: "Customer account not found"
+            });
+        }
+
+        // UPDATED_BY must come from JWT
+        const UPDATED_BY = USER_ID;
+
         const [result] = await db.query(
-            "CALL sp_o_customer_addresses_update(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            `CALL sp_o_customer_addresses_update(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 ADDRESS_ID,
                 ADDRESS_TYPE,
                 FULL_NAME,
                 MOBILE_NUMBER,
                 ADDRESS_LINE_1,
-                ADDRESS_LINE_2 || null,
-                LANDMARK || null,
+                ADDRESS_LINE_2,
+                LANDMARK,
                 CITY,
                 STATE,
                 COUNTRY,
                 PINCODE,
                 DEFAULT_ADDRESS ?? 0,
                 CUSTOMER_ID,
-                UPDATED_BY || null
+                UPDATED_BY
             ]
         );
 
         return res.status(200).json({
             status: "SUCCESS",
-            message: "Customer address updated successfully"
+            message: "Customer address updated successfully",
+            data: result[0]
         });
 
     } catch (error) {
 
-        console.error("Customer Address Update Error:", error);
+        console.error("Customer address update error:", error);
 
         return res.status(500).json({
             status: "FAILED",
             message: error.sqlMessage || error.message
         });
-
     }
 });
 
 
-// ==========================================
-// GET CUSTOMER ADDRESSES
-// GET /api/customer_addresses/get
-// ==========================================
-
+// 3. GET CUSTOMER ADDRESSES
 router.get("/get", async (req, res) => {
     try {
 
         const {
             ADDRESS_ID = "-1",
-            CUSTOMER_ID = "-1"
+            LIMIT = "10",
+            OFFSET = "0"
         } = req.query;
 
-        // Validate numeric filters before calling dynamic SQL procedure
+        const USER_ID = req.user.USER_ID;
 
-        const filters = {
-            ADDRESS_ID,
-            CUSTOMER_ID
-        };
+        const CUSTOMER_ID = await getAuthenticatedCustomerId(USER_ID);
 
-        for (const [key, value] of Object.entries(filters)) {
-            if (
-                !/^-1$|^[0-9]+$/.test(String(value))
-            ) {
-                return res.status(400).json({
-                    status: "FAILED",
-                    message: `Invalid ${key}`
-                });
-            }
+        if (!CUSTOMER_ID) {
+            return res.status(403).json({
+                status: "FAILED",
+                message: "Customer account not found"
+            });
+        }
+
+        const limit = Number(LIMIT);
+        const offset = Number(OFFSET);
+
+        if (
+            !Number.isInteger(limit) ||
+            limit <= 0 ||
+            !Number.isInteger(offset) ||
+            offset < 0
+        ) {
+            return res.status(400).json({
+                status: "FAILED",
+                message: "Invalid LIMIT or OFFSET"
+            });
+        }
+
+        if (
+            ADDRESS_ID !== "-1" &&
+            !/^\d+$/.test(String(ADDRESS_ID))
+        ) {
+            return res.status(400).json({
+                status: "FAILED",
+                message: "Invalid ADDRESS_ID"
+            });
         }
 
         const [result] = await db.query(
-            "CALL sp_o_customer_addresses_get(?, ?)",
+            `CALL sp_o_customer_addresses_get(?, ?, ?, ?)`,
             [
                 ADDRESS_ID,
-                CUSTOMER_ID
+                CUSTOMER_ID,
+                limit,
+                offset
             ]
         );
 
@@ -210,44 +241,49 @@ router.get("/get", async (req, res) => {
 
     } catch (error) {
 
-        console.error("Customer Address GET Error:", error);
+        console.error("Customer address get error:", error);
 
         return res.status(500).json({
             status: "FAILED",
             message: error.sqlMessage || error.message
         });
-
     }
 });
 
 
-// ==========================================
-// DELETE CUSTOMER ADDRESS
-// DELETE /api/customer_addresses/delete
-// ==========================================
-
+// 4. DELETE CUSTOMER ADDRESS
 router.delete("/delete", async (req, res) => {
     try {
 
-        const {
-            ADDRESS_ID,
-            CUSTOMER_ID
-        } = req.body || {};
+        const { ADDRESS_ID } = req.body;
 
-        if (
-            ADDRESS_ID == null ||
-            CUSTOMER_ID == null ||
-            !/^[0-9]+$/.test(String(ADDRESS_ID)) ||
-            !/^[0-9]+$/.test(String(CUSTOMER_ID))
-        ) {
+        if (!ADDRESS_ID) {
             return res.status(400).json({
                 status: "FAILED",
-                message: "Valid ADDRESS_ID and CUSTOMER_ID are required"
+                message: "ADDRESS_ID is required"
+            });
+        }
+
+        if (!/^\d+$/.test(String(ADDRESS_ID))) {
+            return res.status(400).json({
+                status: "FAILED",
+                message: "Invalid ADDRESS_ID"
+            });
+        }
+
+        const USER_ID = req.user.USER_ID;
+
+        const CUSTOMER_ID = await getAuthenticatedCustomerId(USER_ID);
+
+        if (!CUSTOMER_ID) {
+            return res.status(403).json({
+                status: "FAILED",
+                message: "Customer account not found"
             });
         }
 
         const [result] = await db.query(
-            "CALL sp_o_customer_addresses_delete(?, ?)",
+            `CALL sp_o_customer_addresses_delete(?, ?)`,
             [
                 ADDRESS_ID,
                 CUSTOMER_ID
@@ -256,19 +292,20 @@ router.delete("/delete", async (req, res) => {
 
         return res.status(200).json({
             status: "SUCCESS",
-            message: "Customer address deleted successfully"
+            message: "Customer address deleted successfully",
+            data: result[0]
         });
 
     } catch (error) {
 
-        console.error("Customer Address Delete Error:", error);
+        console.error("Customer address delete error:", error);
 
         return res.status(500).json({
             status: "FAILED",
             message: error.sqlMessage || error.message
         });
-
     }
 });
+
 
 module.exports = router;

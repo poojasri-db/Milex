@@ -2,14 +2,33 @@
 const express = require("express");
 const router = express.Router();
 const db = require("./db");
+const authenticateToken = require("./auth_middleware");
 
 // ==========================================
 // GET FILTERED ORDER DETAILS
 // GET /api/order_dashboard/get
+// ADMIN ONLY
 // ==========================================
 
-router.get("/get", async (req, res) => {
+router.get("/get", authenticateToken, async (req, res) => {
     try {
+
+        // ==========================================
+        // ADMIN AUTHORIZATION
+        // ==========================================
+
+        if (
+            String(req.user.USER_TYPE || "").trim().toUpperCase() !== "ADMIN"
+        ) {
+            return res.status(403).json({
+                status: "FAILED",
+                message: "Access denied. Admin only."
+            });
+        }
+
+        // ==========================================
+        // REQUEST PARAMETERS
+        // ==========================================
 
         const {
             DAYS = "7",
@@ -20,7 +39,10 @@ router.get("/get", async (req, res) => {
             OFFSET = "0"
         } = req.query;
 
-        // Validate BIGINT filter values as strings
+        // ==========================================
+        // VALIDATE BIGINT FILTER VALUES
+        // ==========================================
+
         const bigintFilters = {
             ORDER_STATUS,
             PAYMENT_STATUS,
@@ -28,6 +50,7 @@ router.get("/get", async (req, res) => {
         };
 
         for (const [key, value] of Object.entries(bigintFilters)) {
+
             if (!/^-1$|^[0-9]+$/.test(String(value))) {
                 return res.status(400).json({
                     status: "FAILED",
@@ -35,6 +58,10 @@ router.get("/get", async (req, res) => {
                 });
             }
         }
+
+        // ==========================================
+        // VALIDATE DAYS, LIMIT AND OFFSET
+        // ==========================================
 
         const days = Number(DAYS);
         const limit = Number(LIMIT);
@@ -60,6 +87,10 @@ router.get("/get", async (req, res) => {
             });
         }
 
+        // ==========================================
+        // CALL STORED PROCEDURE
+        // ==========================================
+
         const [result] = await db.query(
             "CALL sp_m_order_management_dashboard_get(?, ?, ?, ?, ?, ?)",
             [
@@ -71,6 +102,10 @@ router.get("/get", async (req, res) => {
                 offset
             ]
         );
+
+        // ==========================================
+        // SUCCESS RESPONSE
+        // ==========================================
 
         return res.status(200).json({
             status: "SUCCESS",

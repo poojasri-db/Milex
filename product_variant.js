@@ -2,6 +2,14 @@
 const express = require("express");
 const router = express.Router();
 const db = require("./db");
+const authenticateToken = require("./auth_middleware");
+
+// ==========================================
+// JWT AUTHENTICATION
+// ALL ROUTES REQUIRE VALID TOKEN
+// ==========================================
+router.use(authenticateToken);
+
 
 // ==========================================
 // INSERT PRODUCT VARIANT
@@ -11,7 +19,8 @@ router.post("/insert", async (req, res) => {
     try {
         const {
             VARIANT_NAME, BARCODE, SIZE, COLOR, MATERIAL, WEIGHT, PRICE,
-            STOCK_QUANTITY, VARIANT_IMAGE, PRODUCT_ID, SELLER_ID, SELLER_NAME, CREATED_BY
+            STOCK_QUANTITY, VARIANT_IMAGE, PRODUCT_ID, SELLER_ID,
+            SELLER_NAME, CREATED_BY
         } = req.body || {};
 
         if (!PRODUCT_ID) {
@@ -25,7 +34,8 @@ router.post("/insert", async (req, res) => {
             "CALL sp_o_product_variant_insert(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 VARIANT_NAME, BARCODE, SIZE, COLOR, MATERIAL, WEIGHT, PRICE,
-                STOCK_QUANTITY, VARIANT_IMAGE, PRODUCT_ID, SELLER_ID, SELLER_NAME, CREATED_BY
+                STOCK_QUANTITY, VARIANT_IMAGE, PRODUCT_ID, SELLER_ID,
+                SELLER_NAME, CREATED_BY
             ]
         );
 
@@ -48,7 +58,7 @@ router.post("/insert", async (req, res) => {
 
 // ==========================================
 // UPDATE PRODUCT VARIANT
-// POST /api/product-variant/update
+// PUT /api/product-variant/update
 // ==========================================
 router.put("/update", async (req, res) => {
     try {
@@ -68,9 +78,9 @@ router.put("/update", async (req, res) => {
         const [result] = await db.query(
             "CALL sp_o_product_variant_update(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
-                VARIANT_ID, VARIANT_NAME, BARCODE, SIZE, COLOR, MATERIAL, WEIGHT,
-                PRICE, STOCK_QUANTITY, VARIANT_IMAGE, PRODUCT_ID, SELLER_ID,
-                SELLER_NAME, STATUS, UPDATED_BY
+                VARIANT_ID, VARIANT_NAME, BARCODE, SIZE, COLOR, MATERIAL,
+                WEIGHT, PRICE, STOCK_QUANTITY, VARIANT_IMAGE, PRODUCT_ID,
+                SELLER_ID, SELLER_NAME, STATUS, UPDATED_BY
             ]
         );
 
@@ -147,7 +157,7 @@ router.get("/get", async (req, res) => {
 
 // ==========================================
 // DELETE PRODUCT VARIANT
-// POST /api/product-variant/delete
+// DELETE /api/product-variant/delete
 // ==========================================
 router.delete("/delete", async (req, res) => {
     try {

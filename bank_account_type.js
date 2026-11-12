@@ -1,19 +1,38 @@
+
 const express = require("express");
 const router = express.Router();
 const db = require("./db");
+const authenticateToken = require("./auth_middleware");
 
 // ==========================================
 // GET BANK ACCOUNT TYPES
 // GET /api/bank-account-type/get/:id?limit=10&offset=0
+// ADMIN + SELLER
 // Use -1 to get all records
 // ==========================================
 
-router.get("/get/:id", async (req, res) => {
+router.get("/get/:id", authenticateToken, async (req, res) => {
     try {
+        const userType = String(req.user.USER_TYPE || "")
+            .trim()
+            .toUpperCase();
+
+        if (!["ADMIN", "SELLER"].includes(userType)) {
+            return res.status(403).json({
+                STATUS: "ERROR",
+                MESSAGE: "Access denied. Admin or Seller only."
+            });
+        }
+
         const ACCOUNT_TYPE_ID = Number(req.params.id);
 
-        const LIMIT = Number(req.query.limit) || 10;
-        const OFFSET = Number(req.query.offset) || 0;
+        const LIMIT = req.query.limit === undefined
+            ? 10
+            : Number(req.query.limit);
+
+        const OFFSET = req.query.offset === undefined
+            ? 0
+            : Number(req.query.offset);
 
         if (
             !Number.isSafeInteger(ACCOUNT_TYPE_ID) ||
@@ -29,6 +48,7 @@ router.get("/get/:id", async (req, res) => {
         if (
             !Number.isSafeInteger(LIMIT) ||
             LIMIT <= 0 ||
+            LIMIT > 100 ||
             !Number.isSafeInteger(OFFSET) ||
             OFFSET < 0
         ) {

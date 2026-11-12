@@ -40,6 +40,9 @@ const paymentstatus = require("./payment_status");
 const shippingstatus = require("./shipping_status");
 const ordercount = require("./order_count");
 const customeraddress = require("./customer_address");
+const returnrequest = require("./return_request");
+const returncount = require("./return_count");
+const returnreason = require("./return_reason");
 
 
 
@@ -79,6 +82,9 @@ app.use("/api/shipping_status", shippingstatus);
 app.use("/api/order_count", ordercount);
 app.use("/api/colours", colours);
 app.use("/api/customer_address", customeraddress);
+app.use("/api/return_request", returnrequest);
+app.use("/api/return_count", returncount);
+app.use("/api/return_reason", returnreason);
 
  
 
