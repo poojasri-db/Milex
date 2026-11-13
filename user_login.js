@@ -50,13 +50,71 @@ function hashRefreshToken(token) {
         .digest("hex");
 }
 
+// GET ACTUAL ROLE ID USING USER_ID
+async function getRoleSpecificId(user, connection = db) {
+
+    const USER_TYPE = String(user.USER_TYPE || "").toUpperCase();
+
+    let CUSTOMER_ID = null;
+    let SELLER_ID = null;
+    let ADMIN_ID = null;
+
+    if (USER_TYPE === "CUSTOMER") {
+
+        const [rows] = await connection.query(
+            `SELECT CUSTOMER_ID
+             FROM m_customer_registration
+             WHERE USER_ID = ?
+             LIMIT 1`,
+            [user.USER_ID]
+        );
+
+        if (rows.length === 0) {
+            throw new Error("Customer ID not found for this user");
+        }
+
+        CUSTOMER_ID = rows[0].CUSTOMER_ID;
+
+    } else if (USER_TYPE === "SELLER") {
+
+        const [rows] = await connection.query(
+            `SELECT SELLER_ID
+             FROM m_seller_onboarding
+             WHERE USER_ID = ?
+             LIMIT 1`,
+            [user.USER_ID]
+        );
+
+        if (rows.length === 0) {
+            throw new Error("Seller ID not found for this user");
+        }
+
+        SELLER_ID = rows[0].SELLER_ID;
+
+    } else if (USER_TYPE === "ADMIN") {
+
+        ADMIN_ID = user.USER_ID;
+
+    }
+
+    return {
+        CUSTOMER_ID,
+        SELLER_ID,
+        ADMIN_ID
+    };
+}
+
 // CREATE ACCESS TOKEN
-function createAccessToken(user, sessionId) {
+function createAccessToken(user, sessionId, roleIds) {
+
     return jwt.sign(
         {
             sid: sessionId,
             role: user.USER_TYPE,
-            USER_TYPE_ID: user.USER_TYPE_ID
+            USER_TYPE_ID: user.USER_TYPE_ID,
+            CUSTOMER_ID: roleIds.CUSTOMER_ID,
+            SELLER_ID: roleIds.SELLER_ID,
+            ADMIN_ID: roleIds.ADMIN_ID
         },
         process.env.JWT_SECRET,
         {
@@ -150,11 +208,18 @@ router.post("/login", async (req, res) => {
             });
         }
 
+        // GET ACTUAL CUSTOMER / SELLER / ADMIN ID
+        const roleIds = await getRoleSpecificId(user);
+
         // CREATE SESSION
         const sessionId = crypto.randomUUID();
 
         // CREATE ACCESS TOKEN
-        const accessToken = createAccessToken(user, sessionId);
+        const accessToken = createAccessToken(
+            user,
+            sessionId,
+            roleIds
+        );
 
         // CREATE REFRESH TOKEN
         const refreshToken = crypto
@@ -197,6 +262,9 @@ router.post("/login", async (req, res) => {
             USER_NAME: user.USER_NAME,
             USER_TYPE: user.USER_TYPE,
             USER_TYPE_ID: user.USER_TYPE_ID,
+            CUSTOMER_ID: roleIds.CUSTOMER_ID,
+            SELLER_ID: roleIds.SELLER_ID,
+            ADMIN_ID: roleIds.ADMIN_ID,
             ACCESSTOKEN: accessToken
         });
 
@@ -312,13 +380,17 @@ router.post("/refresh", async (req, res) => {
             });
         }
 
+        // GET ACTUAL CUSTOMER / SELLER / ADMIN ID
+        const roleIds = await getRoleSpecificId(user, connection);
+
         // CREATE NEW SESSION ID
         const newSessionId = crypto.randomUUID();
 
-        // CREATE NEW ACCESS TOKEN WITH USER_TYPE_ID
+        // CREATE NEW ACCESS TOKEN
         const accessToken = createAccessToken(
             user,
-            newSessionId
+            newSessionId,
+            roleIds
         );
 
         // ROTATE REFRESH TOKEN
@@ -384,6 +456,9 @@ router.post("/refresh", async (req, res) => {
             USER_NAME: user.USER_NAME,
             USER_TYPE: user.USER_TYPE,
             USER_TYPE_ID: user.USER_TYPE_ID,
+            CUSTOMER_ID: roleIds.CUSTOMER_ID,
+            SELLER_ID: roleIds.SELLER_ID,
+            ADMIN_ID: roleIds.ADMIN_ID,
             ACCESSTOKEN: accessToken
         });
 

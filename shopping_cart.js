@@ -19,6 +19,7 @@ async function getCustomerId(userId) {
     return rows.length > 0 ? rows[0].CUSTOMER_ID : null;
 }
 
+
 // ==========================================
 // INSERT SHOPPING CART
 // POST /api/shopping-cart/insert
@@ -41,16 +42,18 @@ router.post("/insert", authenticateToken, async (req, res) => {
         const {
             PRODUCT_ID,
             SELLER_ID,
+            CUSTOMER_ID,
             QUANTITY,
             UNIT_PRICE,
             DISCOUNT,
             TAX,
             TOTAL_AMOUNT
-        } = req.body;
+        } = req.body || {};
 
         if (
             !Number.isInteger(Number(PRODUCT_ID)) || Number(PRODUCT_ID) <= 0 ||
             !Number.isInteger(Number(SELLER_ID)) || Number(SELLER_ID) <= 0 ||
+            !Number.isInteger(Number(CUSTOMER_ID)) || Number(CUSTOMER_ID) <= 0 ||
             !Number.isInteger(Number(QUANTITY)) || Number(QUANTITY) <= 0 ||
             !Number.isFinite(Number(UNIT_PRICE)) || Number(UNIT_PRICE) < 0 ||
             !Number.isFinite(Number(DISCOUNT)) || Number(DISCOUNT) < 0 ||
@@ -60,15 +63,6 @@ router.post("/insert", authenticateToken, async (req, res) => {
             return res.status(400).json({
                 success: false,
                 message: "Invalid or missing shopping cart details."
-            });
-        }
-
-        const CUSTOMER_ID = await getCustomerId(req.user.USER_ID);
-
-        if (!CUSTOMER_ID) {
-            return res.status(404).json({
-                success: false,
-                message: "Customer registration not found."
             });
         }
 
@@ -102,6 +96,7 @@ router.post("/insert", authenticateToken, async (req, res) => {
         });
     }
 });
+
 
 
 // ==========================================
@@ -192,100 +187,65 @@ router.put("/update", authenticateToken, async (req, res) => {
 });
 
 
+
 // ==========================================
 // GET SHOPPING CART
-// GET /api/shopping-cart/get
-// ADMIN + CUSTOMER
+// GET /api/shopping_cart/get
 // ==========================================
 
-router.get("/get", authenticateToken, async (req, res) => {
+router.get("/get", async (req, res) => {
     try {
-        const userType = String(req.user.USER_TYPE || "")
-            .trim()
-            .toUpperCase();
-
-        if (!["ADMIN", "CUSTOMER"].includes(userType)) {
-            return res.status(403).json({
-                success: false,
-                message: "Access denied. Admin or Customer only."
-            });
-        }
 
         const {
             CART_ID = -1,
             PRODUCT_ID = -1,
             SELLER_ID = -1,
+            CUSTOMER_ID,
             LIMIT = 10,
             OFFSET = 0
         } = req.query;
 
-        const validFilter = (value) =>
-            Number.isInteger(Number(value)) &&
-            (Number(value) === -1 || Number(value) > 0);
-
+        // CUSTOMER ID VALIDATION
         if (
-            !validFilter(CART_ID) ||
-            !validFilter(PRODUCT_ID) ||
-            !validFilter(SELLER_ID) ||
-            !Number.isInteger(Number(LIMIT)) ||
-            Number(LIMIT) < 1 ||
-            Number(LIMIT) > 100 ||
-            !Number.isInteger(Number(OFFSET)) ||
-            Number(OFFSET) < 0
+            CUSTOMER_ID === undefined ||
+            CUSTOMER_ID === "" ||
+            !Number.isInteger(Number(CUSTOMER_ID)) ||
+            Number(CUSTOMER_ID) <= 0
         ) {
             return res.status(400).json({
                 success: false,
-                message: "Invalid filter or pagination parameters."
+                message: "Valid CUSTOMER_ID is required"
             });
         }
 
-        let CUSTOMER_ID;
-
-        if (userType === "CUSTOMER") {
-            // Customer can only view their own cart.
-            CUSTOMER_ID = await getCustomerId(req.user.USER_ID);
-
-            if (!CUSTOMER_ID) {
-                return res.status(404).json({
-                    success: false,
-                    message: "Customer registration not found."
-                });
-            }
-        } else {
-            // Admin must specify a particular customer.
-            CUSTOMER_ID = Number(req.query.CUSTOMER_ID);
-
-            if (
-                !req.query.CUSTOMER_ID ||
-                !Number.isInteger(CUSTOMER_ID) ||
-                CUSTOMER_ID <= 0
-            ) {
-                return res.status(400).json({
-                    success: false,
-                    message: "ADMIN must provide a valid CUSTOMER_ID."
-                });
-            }
-        }
-
+        // CALL STORED PROCEDURE
         const [result] = await db.query(
             "CALL sp_o_shopping_cart_get(?,?,?,?,?,?)",
             [
-                CART_ID,
-                PRODUCT_ID,
-                SELLER_ID,
-                CUSTOMER_ID,
-                LIMIT,
-                OFFSET
+                Number(CART_ID),
+                Number(PRODUCT_ID),
+                Number(SELLER_ID),
+                Number(CUSTOMER_ID),
+                Number(LIMIT),
+                Number(OFFSET)
             ]
         );
 
+        // FETCH CART DETAILS
+        const cartData = result[0] || [];
+
         return res.status(200).json({
             success: true,
-            message: "Shopping cart details fetched successfully",
-            data: result[0]
+            message: cartData.length > 0
+                ? "Shopping cart details fetched successfully"
+                : "No shopping cart records found for this customer",
+            CUSTOMER_ID: Number(CUSTOMER_ID),
+            total_records: cartData.length,
+            data: cartData
         });
 
     } catch (error) {
+
         console.error("Shopping Cart Get Error:", error);
 
         return res.status(500).json({
@@ -294,6 +254,7 @@ router.get("/get", authenticateToken, async (req, res) => {
         });
     }
 });
+
 
 
 // ==========================================

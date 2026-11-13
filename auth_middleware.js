@@ -2,19 +2,14 @@
 const jwt = require("jsonwebtoken");
 const db = require("./db");
 
-
 // ==========================================
 // JWT AUTHENTICATION MIDDLEWARE
 // ==========================================
 
 const authenticateToken = async (req, res, next) => {
-
     try {
 
-        // ==========================================
         // CHECK JWT CONFIGURATION
-        // ==========================================
-
         if (!process.env.JWT_SECRET) {
             throw new Error("JWT_SECRET is missing in .env");
         }
@@ -23,10 +18,7 @@ const authenticateToken = async (req, res, next) => {
             throw new Error("JWT issuer or audience is missing in .env");
         }
 
-        // ==========================================
-        // GET ACCESS TOKEN FROM HEADER
-        // ==========================================
-
+        // GET ACCESS TOKEN
         const authHeader = req.headers.authorization;
 
         if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -45,14 +37,10 @@ const authenticateToken = async (req, res, next) => {
             });
         }
 
-        // ==========================================
-        // VERIFY JWT SIGNATURE
-        // ==========================================
-
+        // VERIFY JWT
         let decoded;
 
         try {
-
             decoded = jwt.verify(
                 accessToken,
                 process.env.JWT_SECRET,
@@ -64,17 +52,13 @@ const authenticateToken = async (req, res, next) => {
             );
 
         } catch (error) {
-
             return res.status(401).json({
                 status: "FAILED",
                 message: "Access token is invalid or expired"
             });
         }
 
-        // ==========================================
-        // CHECK REQUIRED JWT PAYLOAD
-        // ==========================================
-
+        // CHECK JWT PAYLOAD
         if (!decoded.sid || !decoded.sub) {
             return res.status(401).json({
                 status: "FAILED",
@@ -82,10 +66,7 @@ const authenticateToken = async (req, res, next) => {
             });
         }
 
-        // ==========================================
         // VERIFY SESSION IN MYSQL
-        // ==========================================
-
         const [sessions] = await db.query(
             `SELECT
                 rs.session_id,
@@ -97,10 +78,10 @@ const authenticateToken = async (req, res, next) => {
              INNER JOIN m_user u
                 ON u.USER_ID = rs.user_id
              WHERE rs.session_id = ?
-             AND rs.user_id = ?
-             AND rs.revoked_at IS NULL
-             AND rs.expires_at > NOW()
-             AND UPPER(TRIM(IFNULL(u.ACTIVE_STATUS, ''))) = 'YES'
+               AND rs.user_id = ?
+               AND rs.revoked_at IS NULL
+               AND rs.expires_at > NOW()
+               AND UPPER(TRIM(IFNULL(u.ACTIVE_STATUS, ''))) = 'YES'
              LIMIT 1`,
             [
                 decoded.sid,
@@ -118,6 +99,59 @@ const authenticateToken = async (req, res, next) => {
         }
 
         // ==========================================
+        // GET ACTUAL CUSTOMER / SELLER / ADMIN ID
+        // ==========================================
+
+        let CUSTOMER_ID = null;
+        let SELLER_ID = null;
+        let ADMIN_ID = null;
+
+        const USER_TYPE = String(session.USER_TYPE || "").trim().toUpperCase();
+
+        if (USER_TYPE === "CUSTOMER") {
+
+            const [rows] = await db.query(
+                `SELECT CUSTOMER_ID
+                 FROM m_customer_registration
+                 WHERE USER_ID = ?
+                 LIMIT 1`,
+                [session.user_id]
+            );
+
+            if (rows.length === 0) {
+                return res.status(403).json({
+                    status: "FAILED",
+                    message: "Customer registration not found for this user"
+                });
+            }
+
+            CUSTOMER_ID = rows[0].CUSTOMER_ID;
+
+        } else if (USER_TYPE === "SELLER") {
+
+            const [rows] = await db.query(
+                `SELECT SELLER_ID
+                 FROM m_seller_onboarding
+                 WHERE USER_ID = ?
+                 LIMIT 1`,
+                [session.user_id]
+            );
+
+            if (rows.length === 0) {
+                return res.status(403).json({
+                    status: "FAILED",
+                    message: "Seller registration not found for this user"
+                });
+            }
+
+            SELLER_ID = rows[0].SELLER_ID;
+
+        } else if (USER_TYPE === "ADMIN") {
+
+            ADMIN_ID = session.user_id;
+        }
+
+        // ==========================================
         // ATTACH USER DETAILS TO REQUEST
         // ==========================================
 
@@ -126,13 +160,15 @@ const authenticateToken = async (req, res, next) => {
             USER_NAME: session.USER_NAME,
             USER_TYPE: session.USER_TYPE,
             USER_TYPE_ID: session.USER_TYPE_ID,
+
+            CUSTOMER_ID: CUSTOMER_ID,
+            SELLER_ID: SELLER_ID,
+            ADMIN_ID: ADMIN_ID,
+
             SESSION_ID: session.session_id
         };
 
-        // ==========================================
         // ALLOW REQUEST
-        // ==========================================
-
         next();
 
     } catch (error) {
