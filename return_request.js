@@ -64,7 +64,9 @@ router.post("/insert", async (req, res) => {
             RETURN_REASON,
             RETURN_DESCRIPTION,
             RETURN_IMAGES,
-            PICKUP_ADDRESS_ID
+            PICKUP_ADDRESS_ID,
+            SELLER_ID,
+            VARIANT_ID
         } = req.body || {};
 
         const userType = String(req.user.USER_TYPE || "")
@@ -86,27 +88,41 @@ router.post("/insert", async (req, res) => {
             !ORDER_ID ||
             !PRODUCT_ID ||
             !QUANTITY ||
-            !RETURN_REASON
+            !RETURN_REASON ||
+            !PICKUP_ADDRESS_ID ||
+            !SELLER_ID ||
+            !VARIANT_ID
         ) {
             return res.status(400).json({
                 success: false,
-                message: "ORDER_ID, PRODUCT_ID, QUANTITY and RETURN_REASON are required"
+                message: "ORDER_ID, PRODUCT_ID, QUANTITY, RETURN_REASON, PICKUP_ADDRESS_ID, SELLER_ID and VARIANT_ID are required"
             });
         }
 
         const orderId = String(ORDER_ID);
         const productId = String(PRODUCT_ID);
         const quantity = Number(QUANTITY);
+        const sellerId = String(SELLER_ID);
+        const variantId = String(VARIANT_ID);
+        const pickupAddressId = String(PICKUP_ADDRESS_ID);
 
         if (
             !/^[0-9]+$/.test(orderId) ||
             !/^[0-9]+$/.test(productId) ||
+            !/^[0-9]+$/.test(sellerId) ||
+            !/^[0-9]+$/.test(variantId) ||
+            !/^[0-9]+$/.test(pickupAddressId) ||
+            Number(orderId) <= 0 ||
+            Number(productId) <= 0 ||
+            Number(sellerId) <= 0 ||
+            Number(variantId) <= 0 ||
+            Number(pickupAddressId) <= 0 ||
             !Number.isSafeInteger(quantity) ||
             quantity <= 0
         ) {
             return res.status(400).json({
                 success: false,
-                message: "Invalid ORDER_ID, PRODUCT_ID or QUANTITY"
+                message: "Invalid input values"
             });
         }
 
@@ -182,35 +198,35 @@ router.post("/insert", async (req, res) => {
         // VERIFY PICKUP ADDRESS OWNERSHIP
         // ==========================================
 
-        if (PICKUP_ADDRESS_ID) {
+        const [addresses] = await db.query(
+            `SELECT ADDRESS_ID
+             FROM o_customer_addresses
+             WHERE ADDRESS_ID = ?
+             AND CUSTOMER_ID = ?
+             LIMIT 1`,
+            [
+                pickupAddressId,
+                order.CUSTOMER_ID
+            ]
+        );
 
-            const [addresses] = await db.query(
-                `SELECT ADDRESS_ID
-                 FROM o_customer_addresses
-                 WHERE ADDRESS_ID = ?
-                 AND CUSTOMER_ID = ?
-                 LIMIT 1`,
-                [
-                    PICKUP_ADDRESS_ID,
-                    order.CUSTOMER_ID
-                ]
-            );
-
-            if (!addresses.length) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Invalid pickup address for this order's customer"
-                });
-            }
+        if (!addresses.length) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid pickup address for this order's customer"
+            });
         }
 
         // ==========================================
         // INSERT RETURN REQUEST
+        // ADDRESS FETCHED AUTOMATICALLY BY SP
         // RETURN STATUS ALWAYS PENDING
         // ==========================================
 
         const [result] = await db.query(
-            `CALL sp_o_return_requests_insert(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            `CALL sp_o_return_requests_insert(
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )`,
             [
                 orderId,
                 productId,
@@ -218,7 +234,10 @@ router.post("/insert", async (req, res) => {
                 RETURN_REASON,
                 RETURN_DESCRIPTION || null,
                 RETURN_IMAGES || null,
-                PICKUP_ADDRESS_ID || null,
+                pickupAddressId,
+                sellerId,
+                order.CUSTOMER_ID,
+                variantId,
                 "PENDING",
                 req.user.USER_ID
             ]
@@ -243,139 +262,66 @@ router.post("/insert", async (req, res) => {
 
 
 // ==========================================
-// UPDATE RETURN REQUEST
-// PUT /api/return-requests/update
-// ADMIN ONLY
+// APPROVE / REJECT RETURN REQUEST
 // ==========================================
 
-router.put("/update", async (req, res) => {
+router.put("/update", authenticateToken, async (req, res) => {
     try {
 
-        if (!adminOnly(req, res)) return;
+        const USER_ID = req.user.USER_ID || req.user.sub;
 
-        const {
-            RETURN_ID,
-            ORDER_ID,
-            PRODUCT_ID,
-            QUANTITY,
-            RETURN_REASON,
-            RETURN_DESCRIPTION,
-            RETURN_IMAGES,
-            PICKUP_ADDRESS_ID,
-            RETURN_STATUS
-        } = req.body || {};
+        const USER_TYPE = String(
+            req.user.USER_TYPE || req.user.role || ""
+        ).toUpperCase();
 
-        if (!RETURN_ID || !ORDER_ID || !PRODUCT_ID) {
+        const { RETURN_ID, RETURN_STATUS } = req.body;
+
+        if (USER_TYPE !== "ADMIN") {
+            return res.status(403).json({
+                success: false,
+                message: "Only admin can approve or reject return requests"
+            });
+        }
+
+        if (!USER_ID) {
             return res.status(400).json({
                 success: false,
-                message: "RETURN_ID, ORDER_ID and PRODUCT_ID are required"
+                message: "User ID not found"
             });
         }
-
-        // ==========================================
-        // VERIFY RETURN REQUEST EXISTS
-        // ==========================================
-
-        const [existing] = await db.query(
-            `SELECT RETURN_ID
-             FROM o_return_requests
-             WHERE RETURN_ID = ?
-             LIMIT 1`,
-            [RETURN_ID]
-        );
-
-        if (!existing.length) {
-            return res.status(404).json({
-                success: false,
-                message: "Return request not found"
-            });
-        }
-
-        // ==========================================
-        // VERIFY ORDER AND PRODUCT
-        // ==========================================
-
-        const [orders] = await db.query(
-            `SELECT ORDER_ID, CUSTOMER_ID, PRODUCT_ID, QUANTITY
-             FROM o_place_orders
-             WHERE ORDER_ID = ?
-             LIMIT 1`,
-            [ORDER_ID]
-        );
-
-        if (!orders.length) {
-            return res.status(404).json({
-                success: false,
-                message: "Order not found"
-            });
-        }
-
-        const order = orders[0];
 
         if (
-            String(order.PRODUCT_ID) !== String(PRODUCT_ID) ||
-            (
-                QUANTITY !== undefined &&
-                QUANTITY !== null &&
-                Number(QUANTITY) > Number(order.QUANTITY)
-            )
+            !RETURN_ID ||
+            !Number.isInteger(Number(RETURN_ID)) ||
+            Number(RETURN_ID) <= 0
         ) {
             return res.status(400).json({
                 success: false,
-                message: "Invalid product or return quantity"
+                message: "Valid RETURN_ID is required"
             });
         }
 
-        // ==========================================
-        // VERIFY PICKUP ADDRESS
-        // ==========================================
+        const status = String(RETURN_STATUS || "").toUpperCase();
 
-        if (PICKUP_ADDRESS_ID) {
-
-            const [addresses] = await db.query(
-                `SELECT ADDRESS_ID
-                 FROM o_customer_addresses
-                 WHERE ADDRESS_ID = ?
-                 AND CUSTOMER_ID = ?
-                 LIMIT 1`,
-                [
-                    PICKUP_ADDRESS_ID,
-                    order.CUSTOMER_ID
-                ]
-            );
-
-            if (!addresses.length) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Invalid pickup address"
-                });
-            }
+        if (!["APPROVED", "REJECTED"].includes(status)) {
+            return res.status(400).json({
+                success: false,
+                message: "RETURN_STATUS must be APPROVED or REJECTED"
+            });
         }
 
-        // ==========================================
-        // UPDATE RETURN REQUEST
-        // ==========================================
-
         const [result] = await db.query(
-            `CALL sp_o_return_requests_update(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            "CALL sp_o_return_requests_update(?, ?, ?)",
             [
                 RETURN_ID,
-                ORDER_ID,
-                PRODUCT_ID,
-                QUANTITY,
-                RETURN_REASON,
-                RETURN_DESCRIPTION,
-                RETURN_IMAGES,
-                PICKUP_ADDRESS_ID,
-                RETURN_STATUS,
-                req.user.USER_ID
+                status,
+                USER_ID
             ]
         );
 
         return res.status(200).json({
             success: true,
-            message: "Return request updated successfully",
-            data: result[0][0] || {}
+            message: `Return request ${status.toLowerCase()} successfully`
         });
 
     } catch (error) {
@@ -390,63 +336,38 @@ router.put("/update", async (req, res) => {
 });
 
 
-// ==========================================
-// GET RETURN REQUESTS
-// GET /api/return-requests/get
-// ADMIN: ALL RETURNS
-// CUSTOMER: OWN RETURNS ONLY
-// ==========================================
 
-router.get("/get", async (req, res) => {
+router.get("/get", (req, res, next) => {
+    if (!adminOnly(req, res)) return;
+    next();
+}, async (req, res) => {
+
     try {
 
-        const userType = String(req.user.USER_TYPE || "")
-            .trim()
-            .toUpperCase();
-
-        if (!["ADMIN", "CUSTOMER"].includes(userType)) {
-            return res.status(403).json({
-                success: false,
-                message: "Access denied."
-            });
-        }
-
         const {
-            RETURN_ID = "-1",
-            ORDER_ID = "-1",
-            PRODUCT_ID = "-1",
-            LIMIT = "10",
-            OFFSET = "0"
+            DAYS = 30,
+            RETURN_STATUS = "-1",
+            RETURN_REASON = "-1",
+            SEARCH = "",
+            LIMIT = 10,
+            OFFSET = 0
         } = req.query;
 
-        // ==========================================
-        // VALIDATE FILTERS
-        // ==========================================
-
-        const filters = {
-            RETURN_ID,
-            ORDER_ID,
-            PRODUCT_ID
-        };
-
-        for (const [key, value] of Object.entries(filters)) {
-
-            if (!/^-1$|^[0-9]+$/.test(String(value))) {
-                return res.status(400).json({
-                    success: false,
-                    message: `Invalid ${key}`
-                });
-            }
-        }
-
+        const days = Number(DAYS);
         const limit = Number(LIMIT);
         const offset = Number(OFFSET);
 
+        if (![7, 30, 60, 90, 180].includes(days)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid DAYS. Allowed values: 7, 30, 60, 90, 180"
+            });
+        }
+
         if (
-            !Number.isSafeInteger(limit) ||
+            !Number.isInteger(limit) ||
             limit <= 0 ||
-            limit > 100 ||
-            !Number.isSafeInteger(offset) ||
+            !Number.isInteger(offset) ||
             offset < 0
         ) {
             return res.status(400).json({
@@ -455,76 +376,42 @@ router.get("/get", async (req, res) => {
             });
         }
 
-        // ==========================================
-        // BUILD SECURE GET QUERY
-        // ==========================================
+        const [result] = await db.query(
+            `CALL sp_o_return_requests_get(?, ?, ?, ?, ?, ?)`,
+            [
+                days,
+                RETURN_STATUS,
+                RETURN_REASON,
+                SEARCH,
+                limit,
+                offset
+            ]
+        );
 
-        let sql = `
-            SELECT
-                rr.*
-            FROM o_return_requests rr
-            INNER JOIN o_place_orders o
-                ON o.ORDER_ID = rr.ORDER_ID
-            WHERE 1 = 1
-        `;
-
-        const params = [];
-
-        // Customer can see only their own returns
-        if (userType === "CUSTOMER") {
-
-            const customerId = await getCustomerId(req.user.USER_ID);
-
-            if (!customerId) {
-                return res.status(403).json({
-                    success: false,
-                    message: "Customer registration not found"
-                });
-            }
-
-            sql += ` AND o.CUSTOMER_ID = ?`;
-            params.push(customerId);
-        }
-
-        if (RETURN_ID !== "-1") {
-            sql += ` AND rr.RETURN_ID = ?`;
-            params.push(RETURN_ID);
-        }
-
-        if (ORDER_ID !== "-1") {
-            sql += ` AND rr.ORDER_ID = ?`;
-            params.push(ORDER_ID);
-        }
-
-        if (PRODUCT_ID !== "-1") {
-            sql += ` AND rr.PRODUCT_ID = ?`;
-            params.push(PRODUCT_ID);
-        }
-
-        sql += ` ORDER BY rr.RETURN_ID DESC LIMIT ? OFFSET ?`;
-
-        params.push(limit, offset);
-
-        const [result] = await db.query(sql, params);
+        const returnRequests = result[0];
+        const totalRecords = result[1][0].TOTAL_RECORDS;
 
         return res.status(200).json({
             success: true,
             message: "Return requests fetched successfully",
-            limit,
-            offset,
-            data: result
+            total_records: totalRecords,
+            data: returnRequests
         });
 
     } catch (error) {
 
-        console.error("Return Request Get Error:", error);
+        console.error("Return Requests Get Error:", error);
 
         return res.status(500).json({
             success: false,
-            message: error.sqlMessage || error.message
+            message: "Failed to fetch return requests",
+            error: error.message
         });
+
     }
+
 });
+
 
 
 // ==========================================
@@ -550,10 +437,6 @@ router.delete("/delete", async (req, res) => {
                 message: "RETURN_ID, ORDER_ID and PRODUCT_ID are required"
             });
         }
-
-        // ==========================================
-        // DELETE RETURN REQUEST
-        // ==========================================
 
         const [result] = await db.query(
             `CALL sp_o_return_requests_delete(?, ?, ?)`,

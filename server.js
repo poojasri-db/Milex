@@ -49,6 +49,8 @@ const wishlist = require("./wishlist");
 const movetocart = require("./move_to_cart");
 const paymentmethod = require("./payment_method");
 const placeorder = require("./place_order");
+const sellerorders = require("./seller_orders");
+const customerorders = require("./customer_orders");
 
 
 
@@ -97,6 +99,8 @@ app.use("/api/wishlist", wishlist);
 app.use("/api/move_to_cart", movetocart);
 app.use("/api/payment_method", paymentmethod);
 app.use("/api/place_order", placeorder);
+app.use("/api/seller_orders", sellerorders);
+app.use("/api/customer_orders", customerorders);
 
  
 

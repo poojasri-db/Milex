@@ -1,4 +1,3 @@
-
 const express = require("express");
 const router = express.Router();
 const db = require("./db");
@@ -22,8 +21,6 @@ async function getCustomerId(userId) {
 
 // ==========================================
 // INSERT SHOPPING CART
-// POST /api/shopping-cart/insert
-// CUSTOMER ONLY
 // ==========================================
 
 router.post("/insert", authenticateToken, async (req, res) => {
@@ -42,6 +39,7 @@ router.post("/insert", authenticateToken, async (req, res) => {
         const {
             PRODUCT_ID,
             SELLER_ID,
+            PRODUCT_VARIANT_ID,
             CUSTOMER_ID,
             QUANTITY,
             UNIT_PRICE,
@@ -53,6 +51,7 @@ router.post("/insert", authenticateToken, async (req, res) => {
         if (
             !Number.isInteger(Number(PRODUCT_ID)) || Number(PRODUCT_ID) <= 0 ||
             !Number.isInteger(Number(SELLER_ID)) || Number(SELLER_ID) <= 0 ||
+            !Number.isInteger(Number(PRODUCT_VARIANT_ID)) || Number(PRODUCT_VARIANT_ID) <= 0 ||
             !Number.isInteger(Number(CUSTOMER_ID)) || Number(CUSTOMER_ID) <= 0 ||
             !Number.isInteger(Number(QUANTITY)) || Number(QUANTITY) <= 0 ||
             !Number.isFinite(Number(UNIT_PRICE)) || Number(UNIT_PRICE) < 0 ||
@@ -67,10 +66,11 @@ router.post("/insert", authenticateToken, async (req, res) => {
         }
 
         const [result] = await db.query(
-            "CALL sp_o_shopping_cart_insert(?,?,?,?,?,?,?,?,?)",
+            "CALL sp_o_shopping_cart_insert(?,?,?,?,?,?,?,?,?,?)",
             [
                 PRODUCT_ID,
                 SELLER_ID,
+                PRODUCT_VARIANT_ID,
                 QUANTITY,
                 UNIT_PRICE,
                 DISCOUNT,
@@ -101,8 +101,6 @@ router.post("/insert", authenticateToken, async (req, res) => {
 
 // ==========================================
 // UPDATE SHOPPING CART
-// PUT /api/shopping-cart/update
-// CUSTOMER ONLY
 // ==========================================
 
 router.put("/update", authenticateToken, async (req, res) => {
@@ -122,6 +120,7 @@ router.put("/update", authenticateToken, async (req, res) => {
             CART_ID,
             PRODUCT_ID,
             SELLER_ID,
+            PRODUCT_VARIANT_ID,
             QUANTITY,
             UNIT_PRICE,
             DISCOUNT,
@@ -133,6 +132,7 @@ router.put("/update", authenticateToken, async (req, res) => {
             !Number.isInteger(Number(CART_ID)) || Number(CART_ID) <= 0 ||
             !Number.isInteger(Number(PRODUCT_ID)) || Number(PRODUCT_ID) <= 0 ||
             !Number.isInteger(Number(SELLER_ID)) || Number(SELLER_ID) <= 0 ||
+            !Number.isInteger(Number(PRODUCT_VARIANT_ID)) || Number(PRODUCT_VARIANT_ID) <= 0 ||
             !Number.isInteger(Number(QUANTITY)) || Number(QUANTITY) <= 0 ||
             !Number.isFinite(Number(UNIT_PRICE)) || Number(UNIT_PRICE) < 0 ||
             !Number.isFinite(Number(DISCOUNT)) || Number(DISCOUNT) < 0 ||
@@ -155,11 +155,12 @@ router.put("/update", authenticateToken, async (req, res) => {
         }
 
         const [result] = await db.query(
-            "CALL sp_o_shopping_cart_update(?,?,?,?,?,?,?,?,?,?)",
+            "CALL sp_o_shopping_cart_update(?,?,?,?,?,?,?,?,?,?,?)",
             [
                 CART_ID,
                 PRODUCT_ID,
                 SELLER_ID,
+                PRODUCT_VARIANT_ID,
                 CUSTOMER_ID,
                 QUANTITY,
                 UNIT_PRICE,
@@ -190,7 +191,6 @@ router.put("/update", authenticateToken, async (req, res) => {
 
 // ==========================================
 // GET SHOPPING CART
-// GET /api/shopping_cart/get
 // ==========================================
 
 router.get("/get", async (req, res) => {
@@ -200,6 +200,7 @@ router.get("/get", async (req, res) => {
             CART_ID = -1,
             PRODUCT_ID = -1,
             SELLER_ID = -1,
+            PRODUCT_VARIANT_ID = -1,
             CUSTOMER_ID,
             LIMIT = 10,
             OFFSET = 0
@@ -220,11 +221,12 @@ router.get("/get", async (req, res) => {
 
         // CALL STORED PROCEDURE
         const [result] = await db.query(
-            "CALL sp_o_shopping_cart_get(?,?,?,?,?,?)",
+            "CALL sp_o_shopping_cart_get(?,?,?,?,?,?,?)",
             [
                 Number(CART_ID),
                 Number(PRODUCT_ID),
                 Number(SELLER_ID),
+                Number(PRODUCT_VARIANT_ID),
                 Number(CUSTOMER_ID),
                 Number(LIMIT),
                 Number(OFFSET)
@@ -259,8 +261,6 @@ router.get("/get", async (req, res) => {
 
 // ==========================================
 // DELETE SHOPPING CART
-// DELETE /api/shopping-cart/delete
-// CUSTOMER ONLY
 // ==========================================
 
 router.delete("/delete", authenticateToken, async (req, res) => {
@@ -279,17 +279,19 @@ router.delete("/delete", authenticateToken, async (req, res) => {
         const {
             CART_ID,
             PRODUCT_ID,
-            SELLER_ID
+            SELLER_ID,
+            PRODUCT_VARIANT_ID
         } = req.body;
 
         if (
             !Number.isInteger(Number(CART_ID)) || Number(CART_ID) <= 0 ||
             !Number.isInteger(Number(PRODUCT_ID)) || Number(PRODUCT_ID) <= 0 ||
-            !Number.isInteger(Number(SELLER_ID)) || Number(SELLER_ID) <= 0
+            !Number.isInteger(Number(SELLER_ID)) || Number(SELLER_ID) <= 0 ||
+            !Number.isInteger(Number(PRODUCT_VARIANT_ID)) || Number(PRODUCT_VARIANT_ID) <= 0
         ) {
             return res.status(400).json({
                 success: false,
-                message: "Valid CART_ID, PRODUCT_ID and SELLER_ID are required."
+                message: "Valid CART_ID, PRODUCT_ID, SELLER_ID and PRODUCT_VARIANT_ID are required."
             });
         }
 
@@ -303,11 +305,12 @@ router.delete("/delete", authenticateToken, async (req, res) => {
         }
 
         const [result] = await db.query(
-            "CALL sp_o_shopping_cart_delete(?,?,?,?)",
+            "CALL sp_o_shopping_cart_delete(?,?,?,?,?)",
             [
                 CART_ID,
                 PRODUCT_ID,
                 SELLER_ID,
+                PRODUCT_VARIANT_ID,
                 CUSTOMER_ID
             ]
         );
