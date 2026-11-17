@@ -173,39 +173,12 @@ router.post("/insert", async (req, res) => {
 // SELLER: OWN RECORD ONLY
 // ADMIN: ANY SELLER
 // ==================================================
-router.put("/update", authenticateToken, async (req, res) => {
+
+router.put("/update", async (req, res) => {
     try {
-        if (!isAdmin(req) && !isSeller(req)) {
-            return res.status(403).json({
-                STATUS: "FAILED",
-                MESSAGE: "Only sellers and admins can update seller details"
-            });
-        }
-
-        let SELLER_ID;
-
-        if (isAdmin(req)) {
-            SELLER_ID = req.body.SELLER_ID;
-
-            if (!SELLER_ID) {
-                return res.status(400).json({
-                    STATUS: "FAILED",
-                    MESSAGE: "SELLER_ID is required"
-                });
-            }
-        } else {
-            // Seller ID is resolved from authenticated user.
-            SELLER_ID = await getSellerIdByUserId(req.user.USER_ID);
-
-            if (!SELLER_ID) {
-                return res.status(404).json({
-                    STATUS: "FAILED",
-                    MESSAGE: "Seller profile not found for this account"
-                });
-            }
-        }
 
         const {
+            SELLER_ID,
             BUSINESS_NAME,
             SELLER_NAME,
             BUSINESS_TYPE,
@@ -222,8 +195,16 @@ router.put("/update", authenticateToken, async (req, res) => {
             CONTACT_PERSON_NAME,
             CONTACT_PERSON_MOBILE,
             CONTACT_PERSON_EMAIL,
-            USER_PASSWORD
+            USER_PASSWORD,
+            UPDATED_BY
         } = req.body;
+
+        if (!SELLER_ID) {
+            return res.status(400).json({
+                STATUS: "FAILED",
+                MESSAGE: "SELLER_ID is required"
+            });
+        }
 
         // Hash password only when a new password is provided
         let hashedPassword = null;
@@ -267,7 +248,7 @@ router.put("/update", authenticateToken, async (req, res) => {
                 CONTACT_PERSON_MOBILE ? String(CONTACT_PERSON_MOBILE) : null,
                 CONTACT_PERSON_EMAIL || null,
                 hashedPassword,
-                req.user.USER_ID
+                UPDATED_BY || null
             ]
         );
 

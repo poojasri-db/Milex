@@ -65,16 +65,9 @@ router.post("/insert", async (req, res) => {
 
 
 // ==========================================
-// JWT AUTHENTICATION
-// UPDATE, GET AND DELETE REQUIRE LOGIN
-// ==========================================
-
-router.use(authenticateToken);
-
-
-// ==========================================
 // UPDATE SELLER DOCUMENTS
 // PUT /api/seller-documents/update
+// PUBLIC API - NO TOKEN REQUIRED
 // ==========================================
 
 router.put("/update", async (req, res) => {
@@ -88,32 +81,14 @@ router.put("/update", async (req, res) => {
             OWNER_DIRECTOR_ID_PROOF,
             BANK_PROOF,
             OTHER_SUPPORTING_DOCUMENT,
-            SELLER_ID
+            SELLER_ID,
+            UPDATED_BY
         } = req.body || {};
 
         if (!DOCUMENT_ID || !SELLER_ID) {
             return res.status(400).json({
                 status: false,
                 message: "DOCUMENT_ID and SELLER_ID are required"
-            });
-        }
-
-        const userType = String(req.user.USER_TYPE || "").toUpperCase();
-
-        if (!["ADMIN", "SELLER"].includes(userType)) {
-            return res.status(403).json({
-                status: false,
-                message: "You are not authorized to update seller documents"
-            });
-        }
-
-        if (
-            userType === "SELLER" &&
-            Number(req.user.SELLER_ID) !== Number(SELLER_ID)
-        ) {
-            return res.status(403).json({
-                status: false,
-                message: "You can only update your own documents"
             });
         }
 
@@ -129,7 +104,7 @@ router.put("/update", async (req, res) => {
                 BANK_PROOF,
                 OTHER_SUPPORTING_DOCUMENT,
                 SELLER_ID,
-                req.user.USER_ID
+                UPDATED_BY || null
             ]
         );
 
@@ -154,6 +129,7 @@ router.put("/update", async (req, res) => {
 // GET SELLER DOCUMENTS
 // GET /api/seller-documents/get
 // ADMIN + SELLER
+// TOKEN REQUIRED
 // ==========================================
 
 router.get("/get", authenticateToken, async (req, res) => {
@@ -174,7 +150,6 @@ router.get("/get", authenticateToken, async (req, res) => {
             });
         }
 
-        // Seller can access only their own documents
         if (userType === "SELLER") {
             if (!req.user.SELLER_ID) {
                 return res.status(403).json({
@@ -231,9 +206,11 @@ router.get("/get", authenticateToken, async (req, res) => {
 // ==========================================
 // DELETE SELLER DOCUMENTS
 // DELETE /api/seller-documents/delete
+// ADMIN + SELLER
+// TOKEN REQUIRED
 // ==========================================
 
-router.delete("/delete", async (req, res) => {
+router.delete("/delete", authenticateToken, async (req, res) => {
     try {
         const {
             DOCUMENT_ID
@@ -265,8 +242,8 @@ router.delete("/delete", async (req, res) => {
 
             // Verify document ownership before deletion
             const [check] = await db.query(
-                "CALL sp_o_seller_documents_get(?, ?, ?)",
-                [DOCUMENT_ID, 1000, 0]
+                "CALL sp_o_seller_documents_get(?, ?, ?, ?)",
+                [DOCUMENT_ID, req.user.SELLER_ID, 1000, 0]
             );
 
             const document = check[0].find(

@@ -74,17 +74,9 @@ router.post("/insert", async (req, res) => {
 
 
 // ==========================================
-// JWT AUTHENTICATION
-// UPDATE, GET AND DELETE REQUIRE LOGIN
-// ==========================================
-
-router.use(authenticateToken);
-
-
-// ==========================================
 // UPDATE SELLER BANK DETAILS
 // PUT /api/seller-bank-details/update
-// ADMIN + SELLER
+// PUBLIC API - NO TOKEN REQUIRED
 // ==========================================
 
 router.put("/update", async (req, res) => {
@@ -98,25 +90,14 @@ router.put("/update", async (req, res) => {
             CONFIRM_ACCOUNT_NUMBER,
             IFSC_CODE,
             ACCOUNT_TYPE,
-            SELLER_ID
+            SELLER_ID,
+            UPDATED_BY
         } = req.body || {};
 
         if (!BANK_DETAIL_ID || !SELLER_ID) {
             return res.status(400).json({
                 status: false,
                 message: "BANK_DETAIL_ID and SELLER_ID are required"
-            });
-        }
-
-        const userType = String(req.user.USER_TYPE || "").toUpperCase();
-
-        if (
-            userType === "SELLER" &&
-            Number(req.user.SELLER_ID) !== Number(SELLER_ID)
-        ) {
-            return res.status(403).json({
-                status: false,
-                message: "You can only update your own bank details"
             });
         }
 
@@ -132,7 +113,7 @@ router.put("/update", async (req, res) => {
                 IFSC_CODE,
                 ACCOUNT_TYPE,
                 SELLER_ID,
-                req.user.USER_ID
+                UPDATED_BY || null
             ]
         );
 
@@ -157,9 +138,10 @@ router.put("/update", async (req, res) => {
 // GET SELLER BANK DETAILS
 // GET /api/seller-bank-details/get
 // ADMIN + SELLER
+// TOKEN REQUIRED
 // ==========================================
 
-router.get("/get", async (req, res) => {
+router.get("/get", authenticateToken, async (req, res) => {
     try {
         let {
             BANK_DETAIL_ID = "",
@@ -168,7 +150,9 @@ router.get("/get", async (req, res) => {
             OFFSET = 0
         } = req.query;
 
-        const userType = String(req.user.USER_TYPE || "").toUpperCase();
+        const userType = String(
+            req.user.USER_TYPE || ""
+        ).toUpperCase();
 
         if (userType === "SELLER") {
             SELLER_ID = req.user.SELLER_ID;
@@ -179,6 +163,7 @@ router.get("/get", async (req, res) => {
                     message: "Seller account is not linked"
                 });
             }
+
         } else if (userType !== "ADMIN") {
             return res.status(403).json({
                 status: false,
@@ -232,9 +217,10 @@ router.get("/get", async (req, res) => {
 // DELETE SELLER BANK DETAILS
 // DELETE /api/seller-bank-details/delete
 // ADMIN + SELLER
+// TOKEN REQUIRED
 // ==========================================
 
-router.delete("/delete", async (req, res) => {
+router.delete("/delete", authenticateToken, async (req, res) => {
     try {
         const {
             BANK_DETAIL_ID,
@@ -248,7 +234,9 @@ router.delete("/delete", async (req, res) => {
             });
         }
 
-        const userType = String(req.user.USER_TYPE || "").toUpperCase();
+        const userType = String(
+            req.user.USER_TYPE || ""
+        ).toUpperCase();
 
         if (
             userType === "SELLER" &&
