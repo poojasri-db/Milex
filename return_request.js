@@ -265,6 +265,7 @@ router.post("/insert", async (req, res) => {
 // APPROVE / REJECT RETURN REQUEST
 // ==========================================
 
+
 router.put("/update", authenticateToken, async (req, res) => {
     try {
 
@@ -272,14 +273,15 @@ router.put("/update", authenticateToken, async (req, res) => {
 
         const USER_TYPE = String(
             req.user.USER_TYPE || req.user.role || ""
-        ).toUpperCase();
+        ).trim().toUpperCase();
 
         const { RETURN_ID, RETURN_STATUS } = req.body;
 
-        if (USER_TYPE !== "ADMIN") {
+        // Allow ADMIN and SELLER
+        if (!["ADMIN", "SELLER"].includes(USER_TYPE)) {
             return res.status(403).json({
                 success: false,
-                message: "Only admin can approve or reject return requests"
+                message: "Only admin and seller can approve or reject return requests"
             });
         }
 
@@ -301,7 +303,9 @@ router.put("/update", authenticateToken, async (req, res) => {
             });
         }
 
-        const status = String(RETURN_STATUS || "").toUpperCase();
+        const status = String(RETURN_STATUS || "")
+            .trim()
+            .toUpperCase();
 
         if (!["APPROVED", "REJECTED"].includes(status)) {
             return res.status(400).json({
@@ -337,81 +341,73 @@ router.put("/update", authenticateToken, async (req, res) => {
 
 
 
-router.get("/get", (req, res, next) => {
-    if (!adminOnly(req, res)) return;
-    next();
-}, async (req, res) => {
 
+router.get("/get", authenticateToken, async (req, res) => {
     try {
+
+        const USER_TYPE = String(
+            req.user.USER_TYPE || req.user.role || ""
+        ).toUpperCase();
+
+        const SELLER_ID = req.user.SELLER_ID;
 
         const {
             DAYS = 30,
             RETURN_STATUS = "-1",
             RETURN_REASON = "-1",
-            SEARCH = "",
             LIMIT = 10,
             OFFSET = 0
         } = req.query;
 
-        const days = Number(DAYS);
-        const limit = Number(LIMIT);
-        const offset = Number(OFFSET);
+        let FILTER_SELLER_ID = -1;
 
-        if (![7, 30, 60, 90, 180].includes(days)) {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid DAYS. Allowed values: 7, 30, 60, 90, 180"
-            });
-        }
+        if (USER_TYPE === "SELLER") {
+            if (!SELLER_ID) {
+                return res.status(403).json({
+                    success: false,
+                    message: "Seller ID not found in token"
+                });
+            }
 
-        if (
-            !Number.isInteger(limit) ||
-            limit <= 0 ||
-            !Number.isInteger(offset) ||
-            offset < 0
-        ) {
-            return res.status(400).json({
+            FILTER_SELLER_ID = SELLER_ID;
+        } else if (USER_TYPE !== "ADMIN") {
+            return res.status(403).json({
                 success: false,
-                message: "Invalid LIMIT or OFFSET"
+                message: "Access denied"
             });
         }
 
         const [result] = await db.query(
             `CALL sp_o_return_requests_get(?, ?, ?, ?, ?, ?)`,
             [
-                days,
+                Number(DAYS),
+                FILTER_SELLER_ID,
                 RETURN_STATUS,
                 RETURN_REASON,
-                SEARCH,
-                limit,
-                offset
+                Number(LIMIT),
+                Number(OFFSET)
             ]
         );
 
-        const returnRequests = result[0];
-        const totalRecords = result[1][0].TOTAL_RECORDS;
+        const data = result[0] || [];
+        const total = result[1]?.[0]?.TOTAL_RECORDS || 0;
 
         return res.status(200).json({
             success: true,
             message: "Return requests fetched successfully",
-            total_records: totalRecords,
-            data: returnRequests
+            total_records: total,
+            data
         });
 
     } catch (error) {
-
-        console.error("Return Requests Get Error:", error);
+        console.error("Return Request GET Error:", error);
 
         return res.status(500).json({
             success: false,
-            message: "Failed to fetch return requests",
-            error: error.message
+            message: error.sqlMessage || error.message
         });
-
     }
-
 });
-
 
 
 // ==========================================

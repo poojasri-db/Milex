@@ -166,22 +166,27 @@ router.put("/update", authenticateToken, async (req, res) => {
 // PUBLIC API
 // ==========================================
 
+
 router.get("/get", async (req, res) => {
     try {
         const {
             PRODUCT_ID = "-1",
             CATEGORY_ID = "-1",
             BRAND_ID = "-1",
+            SELLER_ID = "-1",
+            STATUS = "-1",
             LIMIT = 10,
             OFFSET = 0
         } = req.query;
 
         const [result] = await db.query(
-            "CALL sp_m_products_get(?,?,?,?,?)",
+            "CALL sp_m_products_get(?,?,?,?,?,?,?)",
             [
                 PRODUCT_ID,
                 CATEGORY_ID,
                 BRAND_ID,
+                SELLER_ID,
+                STATUS,
                 Number(LIMIT),
                 Number(OFFSET)
             ]
@@ -202,6 +207,8 @@ router.get("/get", async (req, res) => {
         });
     }
 });
+
+
 
 
 // ==========================================

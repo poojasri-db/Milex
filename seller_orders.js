@@ -14,7 +14,7 @@ router.get("/get", authenticateToken, async (req, res) => {
     try {
 
         const USER_ID = req.user.USER_ID;
-        const USER_TYPE = String(req.user.USER_TYPE).toUpperCase();
+        const USER_TYPE = String(req.user.USER_TYPE || "").toUpperCase();
 
         // CHECK SELLER LOGIN
 
@@ -24,6 +24,32 @@ router.get("/get", authenticateToken, async (req, res) => {
                 message: "Only sellers can view seller orders"
             });
         }
+
+        if (!USER_ID) {
+            return res.status(400).json({
+                status: "FAILED",
+                message: "User ID not found in token"
+            });
+        }
+
+        // GET SELLER ID USING USER ID
+
+        const [sellerResult] = await db.query(
+            `SELECT SELLER_ID
+             FROM m_seller_onboarding
+             WHERE USER_ID = ?
+             LIMIT 1`,
+            [USER_ID]
+        );
+
+        if (!sellerResult.length) {
+            return res.status(404).json({
+                status: "FAILED",
+                message: "Seller profile not found"
+            });
+        }
+
+        const SELLER_ID = sellerResult[0].SELLER_ID;
 
         // GET PARAMETERS
 
@@ -58,25 +84,26 @@ router.get("/get", authenticateToken, async (req, res) => {
             });
         }
 
-        // CALL STORED PROCEDURE
+        // CALL STORED PROCEDURE USING SELLER ID
 
         const [result] = await db.query(
             `CALL sp_o_place_orders_seller_get(?,?,?,?,?)`,
             [
-                USER_ID,
-                ORDER_ID,
+                SELLER_ID,
+                Number(ORDER_ID),
                 STATUS,
                 limit,
                 offset
             ]
         );
 
-        const orders = result[0];
-        const totalRecords = result[1][0].TOTAL_RECORDS;
+        const orders = result[0] || [];
+        const totalRecords = result[1]?.[0]?.TOTAL_RECORDS || 0;
 
         return res.status(200).json({
             status: "SUCCESS",
             message: "Seller orders fetched successfully",
+            SELLER_ID: SELLER_ID,
             data: orders,
             pagination: {
                 TOTAL_RECORDS: totalRecords,

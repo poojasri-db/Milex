@@ -2,26 +2,14 @@
 const express = require("express");
 const router = express.Router();
 const db = require("./db");
-const authenticateToken = require("./auth_middleware");
 
 // ==========================================
 // GET DATE FILTER
 // GET /api/date-filter/get
-// ADMIN ONLY
 // ==========================================
 
-router.get("/get", authenticateToken, async (req, res) => {
+router.get("/get", async (req, res) => {
     try {
-        const userType = String(req.user.USER_TYPE || "")
-            .trim()
-            .toUpperCase();
-
-        if (userType !== "ADMIN") {
-            return res.status(403).json({
-                status: "FAILED",
-                message: "Access denied. Admin only."
-            });
-        }
 
         const {
             DATE_FILTER_ID = "-1",
@@ -73,6 +61,7 @@ router.get("/get", authenticateToken, async (req, res) => {
         });
 
     } catch (error) {
+
         console.error("GET DATE FILTER API ERROR:", error);
 
         return res.status(500).json({
