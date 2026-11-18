@@ -3,11 +3,14 @@ const express = require("express");
 const router = express.Router();
 const db = require("./db");
 const authenticateToken = require("./auth_middleware");
+const { sendSellerRegistrationMail } = require("./mailer");
 
 // ==========================================
 // INSERT SELLER BANK DETAILS
 // POST /api/seller-bank-details/insert
 // PUBLIC API - NO TOKEN REQUIRED
+// FINAL REGISTRATION STEP
+// SEND EMAIL AFTER SUCCESSFUL INSERT
 // ==========================================
 
 router.post("/insert", async (req, res) => {
@@ -32,8 +35,50 @@ router.post("/insert", async (req, res) => {
             });
         }
 
+        if (ACCOUNT_NUMBER !== CONFIRM_ACCOUNT_NUMBER) {
+            return res.status(400).json({
+                status: false,
+                message: "Account number and confirm account number do not match"
+            });
+        }
+
         connection = await db.getConnection();
 
+        // GET SELLER DETAILS
+        const [sellerData] = await connection.query(
+            `SELECT SELLER_ID, SELLER_NAME, EMAIL
+             FROM m_seller_onboarding
+             WHERE SELLER_ID = ?
+             LIMIT 1`,
+            [SELLER_ID]
+        );
+
+        if (sellerData.length === 0) {
+            return res.status(404).json({
+                status: false,
+                message: "Seller not found"
+            });
+        }
+
+        const seller = sellerData[0];
+
+        // CHECK SELLER DOCUMENTS
+        const [documents] = await connection.query(
+            `SELECT DOCUMENT_ID
+             FROM o_seller_documents
+             WHERE SELLER_ID = ?
+             LIMIT 1`,
+            [SELLER_ID]
+        );
+
+        if (documents.length === 0) {
+            return res.status(400).json({
+                status: false,
+                message: "Please complete seller document upload before submitting bank details"
+            });
+        }
+
+        // INSERT BANK DETAILS
         const [results] = await connection.query(
             "CALL sp_o_seller_bank_details_insert(?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
@@ -51,10 +96,29 @@ router.post("/insert", async (req, res) => {
 
         const response = results[0][0];
 
+        // SEND SELLER REGISTRATION EMAIL
+        let emailSent = false;
+
+        try {
+            await sendSellerRegistrationMail(
+                seller.SELLER_NAME,
+                seller.EMAIL
+            );
+
+            emailSent = true;
+
+        } catch (mailError) {
+            console.error("SELLER REGISTRATION EMAIL ERROR:", mailError);
+        }
+
         return res.status(200).json({
             status: true,
-            message: "Seller bank details inserted successfully",
-            BANK_DETAIL_ID: response.BANK_DETAIL_ID
+            message: "Seller registration completed successfully",
+            BANK_DETAIL_ID: response.BANK_DETAIL_ID,
+            EMAIL_SENT: emailSent,
+            EMAIL_MESSAGE: emailSent
+                ? "Registration confirmation email sent successfully"
+                : "Registration completed, but email delivery failed"
         });
 
     } catch (err) {

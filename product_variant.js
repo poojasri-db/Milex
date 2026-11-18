@@ -110,18 +110,21 @@ router.get("/get", async (req, res) => {
         let {
             PRODUCT_ID = -1,
             VARIANT_ID = -1,
+            SELLER_ID = -1,
             LIMIT = 10,
             OFFSET = 0
         } = req.query;
 
         PRODUCT_ID = Number(PRODUCT_ID);
         VARIANT_ID = Number(VARIANT_ID);
+        SELLER_ID = Number(SELLER_ID);
         LIMIT = Number(LIMIT);
         OFFSET = Number(OFFSET);
 
         if (
             !Number.isInteger(PRODUCT_ID) ||
             !Number.isInteger(VARIANT_ID) ||
+            !Number.isInteger(SELLER_ID) ||
             !Number.isInteger(LIMIT) ||
             !Number.isInteger(OFFSET) ||
             LIMIT <= 0 ||
@@ -129,13 +132,13 @@ router.get("/get", async (req, res) => {
         ) {
             return res.status(400).json({
                 status: "FAILURE",
-                message: "Invalid PRODUCT_ID, VARIANT_ID, LIMIT or OFFSET"
+                message: "Invalid PRODUCT_ID, VARIANT_ID, SELLER_ID, LIMIT or OFFSET"
             });
         }
 
         const [result] = await db.query(
-            "CALL sp_o_product_variant_get(?, ?, ?, ?)",
-            [PRODUCT_ID, VARIANT_ID, LIMIT, OFFSET]
+            "CALL sp_o_product_variant_get(?, ?, ?, ?, ?)",
+            [PRODUCT_ID, VARIANT_ID, SELLER_ID, LIMIT, OFFSET]
         );
 
         return res.status(200).json({
