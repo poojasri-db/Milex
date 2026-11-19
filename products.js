@@ -167,6 +167,13 @@ router.put("/update", authenticateToken, async (req, res) => {
 // ==========================================
 
 
+
+// ==========================================
+// GET PRODUCTS
+// GET /api/products/get
+// PUBLIC API
+// ==========================================
+
 router.get("/get", async (req, res) => {
     try {
         const {
@@ -192,16 +199,64 @@ router.get("/get", async (req, res) => {
             ]
         );
 
-        res.status(200).json({
+        const rows = result[0] || [];
+
+        const productMap = new Map();
+
+        for (const row of rows) {
+
+            if (!productMap.has(row.PRODUCT_ID)) {
+
+                const {
+                    VARIANT_ID,
+                    ...productDetails
+                } = row;
+
+                productMap.set(row.PRODUCT_ID, {
+                    ...productDetails,
+                    VARIANTS: []
+                });
+            }
+
+            const {
+                PRODUCT_ID,
+                PRODUCT_NAME,
+                PRODUCT_CODE_SKU,
+                CATEGORY_ID,
+                SUB_CATEGORY_ID,
+                BRAND_ID,
+                PRODUCT_IMAGE,
+                PRODUCT_VIDEO,
+                PRODUCT_DIMENSION,
+                PRODUCT_DESCRIPTION,
+                HSN_CODE,
+                TAX_RATE,
+                SELLER_ID,
+                IS_ACTIVE,
+                CREATED_BY,
+                UPDATED_BY,
+                CREATED_AT,
+                UPDATED_AT,
+                ...variantDetails
+            } = row;
+
+            productMap.get(row.PRODUCT_ID).VARIANTS.push(
+                variantDetails
+            );
+        }
+
+        const formattedData = Array.from(productMap.values());
+
+        return res.status(200).json({
             status: true,
             message: "Product details fetched successfully",
-            data: result[0] || []
+            data: formattedData
         });
 
     } catch (error) {
         console.error("Product Get Error:", error);
 
-        res.status(500).json({
+        return res.status(500).json({
             status: false,
             message: error.sqlMessage || "Failed to fetch products"
         });

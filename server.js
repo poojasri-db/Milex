@@ -51,6 +51,7 @@ const paymentmethod = require("./payment_method");
 const placeorder = require("./place_order");
 const sellerorders = require("./seller_orders");
 const customerorders = require("./customer_orders");
+const s3_upload = require("./s3_upload");
 
 
 
@@ -101,10 +102,11 @@ app.use("/api/payment_method", paymentmethod);
 app.use("/api/place_order", placeorder);
 app.use("/api/seller_orders", sellerorders);
 app.use("/api/customer_orders", customerorders);
+app.use("/api/s3_upload", s3_upload);
 
  
 
-const PORT = 80;
+const PORT = 81;
 
 app.listen(PORT, () => {
     console.log(`Server running`);

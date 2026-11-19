@@ -165,13 +165,30 @@ router.get("/export", authenticateToken, async (req, res) => {
                 d.OTHER_SUPPORTING_DOCUMENT,
                 d.OTHER_SUPPORTING_DOCUMENT_STATUS,
                 d.STATUS AS DOCUMENT_STATUS,
-                d.REJECTION_REASON
+                d.REJECTION_REASON,
+
+                -- SELLER BANK DETAILS
+                b.BANK_DETAIL_ID,
+                b.ACCOUNT_HOLDER_NAME,
+                b.BANK_NAME,
+                b.BRANCH_NAME,
+                b.ACCOUNT_NUMBER,
+                b.CONFIRM_ACCOUNT_NUMBER,
+                b.IFSC_CODE,
+                b.ACCOUNT_TYPE,
+                bat.ACCOUNT_TYPE AS ACCOUNT_TYPE_NAME
 
             FROM m_seller_onboarding s
 
             LEFT JOIN o_seller_documents d
                 ON d.SELLER_ID = s.SELLER_ID
                 AND d.STATUS != 'ACTIVE'
+
+            LEFT JOIN o_seller_bank_details b
+                ON b.SELLER_ID = s.SELLER_ID
+
+            LEFT JOIN m_bank_account_type bat
+                ON bat.ACCOUNT_TYPE_ID = b.ACCOUNT_TYPE
 
             WHERE
                 (
@@ -288,7 +305,18 @@ router.get("/export", authenticateToken, async (req, res) => {
             { header: "Other Supporting Document", key: "OTHER_SUPPORTING_DOCUMENT", width: 30 },
             { header: "Other Supporting Document Status", key: "OTHER_SUPPORTING_DOCUMENT_STATUS", width: 32 },
             { header: "Document Status", key: "DOCUMENT_STATUS", width: 18 },
-            { header: "Rejection Reason", key: "REJECTION_REASON", width: 30 }
+            { header: "Rejection Reason", key: "REJECTION_REASON", width: 30 },
+
+            // BANK DETAILS
+            { header: "Bank Detail ID", key: "BANK_DETAIL_ID", width: 15 },
+            { header: "Account Holder Name", key: "ACCOUNT_HOLDER_NAME", width: 25 },
+            { header: "Bank Name", key: "BANK_NAME", width: 22 },
+            { header: "Branch Name", key: "BRANCH_NAME", width: 22 },
+            { header: "Account Number", key: "ACCOUNT_NUMBER", width: 22 },
+            { header: "Confirm Account Number", key: "CONFIRM_ACCOUNT_NUMBER", width: 25 },
+            { header: "IFSC Code", key: "IFSC_CODE", width: 18 },
+            { header: "Account Type ID", key: "ACCOUNT_TYPE", width: 15 },
+            { header: "Account Type", key: "ACCOUNT_TYPE_NAME", width: 20 }
         ];
 
         // HEADER STYLE
