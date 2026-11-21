@@ -189,7 +189,7 @@ router.post("/upload", upload.single("image"), async (req, res) => {
 // GET /api/s3/image/:folderName/:fileName
 // ============================================
 
-router.get("/image/:folderName/:fileName", async (req, res) => {
+router.get("/images/:folderName/:fileName", async (req, res) => {
     try {
         const { folderName, fileName } = req.params;
 
@@ -293,7 +293,7 @@ router.get("/images", async (req, res) => {
 // DELETE /api/s3/image/:folderName/:fileName
 // ============================================
 
-router.delete("/image/:folderName/:fileName", async (req, res) => {
+router.delete("/images/:folderName/:fileName", async (req, res) => {
     try {
         const { folderName, fileName } = req.params;
 
