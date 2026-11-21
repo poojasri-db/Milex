@@ -56,29 +56,32 @@ router.post("/upload", upload.single("image"), async (req, res) => {
 
         const path = require("path");
 
-        // Get original filename and extension
-        const originalName = path.basename(req.file.originalname);
-        const originalExtension = path.extname(originalName);
+        // Get folder name
+        const folderName = (req.body.folderName || "images")
+            .trim()
+            .replace(/^\/+|\/+$/g, "");
 
-        // Get custom filename if provided
-        let fileName = req.body.fileName
-            ? path.basename(req.body.fileName.trim())
-            : originalName;
+        // Get original filename or custom filename
+        let fileName = req.body.fileName && req.body.fileName.trim() !== ""
+            ? req.body.fileName.trim()
+            : req.file.originalname;
 
-        // Add original extension if custom filename has no extension
+        fileName = path.basename(fileName);
+
+        // Preserve original extension if custom extension is missing
         if (!path.extname(fileName)) {
-            fileName += originalExtension;
+            fileName += path.extname(req.file.originalname);
         }
 
-        // Validate filename
-        if (!fileName || fileName === originalExtension) {
+        if (!folderName || !fileName) {
             return res.status(400).json({
                 success: false,
-                message: "Invalid filename"
+                message: "Folder name and filename are required"
             });
         }
 
-        const imageKey = `images/${fileName}`;
+        // Create S3 key
+        const imageKey = `${folderName}/${fileName}`;
 
         await s3.send(new PutObjectCommand({
             Bucket: BUCKET,
@@ -87,14 +90,12 @@ router.post("/upload", upload.single("image"), async (req, res) => {
             ContentType: req.file.mimetype
         }));
 
-        console.log("Image uploaded:", imageKey);
-
         return res.status(201).json({
             success: true,
             message: "Image uploaded successfully",
             bucket: BUCKET,
-            originalFileName: originalName,
-            uploadedFileName: fileName,
+            folderName: folderName,
+            fileName: fileName,
             imageKey: imageKey
         });
 
