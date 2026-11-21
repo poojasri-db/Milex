@@ -1,12 +1,14 @@
+
 const express = require("express");
 const multer = require("multer");
-const crypto = require("crypto");
+const path = require("path");
 
 const {
     PutObjectCommand,
     GetObjectCommand,
     DeleteObjectCommand,
-    ListObjectsV2Command
+    ListObjectsV2Command,
+    HeadObjectCommand
 } = require("@aws-sdk/client-s3");
 
 const {
@@ -19,7 +21,10 @@ const router = express.Router();
 
 const BUCKET = process.env.AWS_S3_BUCKET || "test-s3-shiftfls";
 
-// Image upload configuration
+// ============================================
+// IMAGE UPLOAD CONFIGURATION
+// ============================================
+
 const upload = multer({
     storage: multer.memoryStorage(),
     limits: {
@@ -41,6 +46,29 @@ const upload = multer({
 });
 
 // ============================================
+// COMMON VALIDATION
+// ============================================
+
+function validateFolderName(folderName) {
+    return (
+        typeof folderName === "string" &&
+        folderName.length <= 100 &&
+        /^[a-zA-Z0-9_-]+$/.test(folderName)
+    );
+}
+
+function validateFileName(fileName) {
+    return (
+        typeof fileName === "string" &&
+        fileName.length <= 255 &&
+        fileName !== "." &&
+        fileName !== ".." &&
+        /^[a-zA-Z0-9._-]+$/.test(fileName) &&
+        /\.(jpg|jpeg|png|webp)$/i.test(fileName)
+    );
+}
+
+// ============================================
 // 1. UPLOAD IMAGE
 // POST /api/s3/upload
 // ============================================
@@ -54,18 +82,22 @@ router.post("/upload", upload.single("image"), async (req, res) => {
             });
         }
 
-        const path = require("path");
+        // Folder name (default: images)
+        const folderName = (req.body.folderName || "images").trim();
 
-        // Get folder name
-        const folderName = (req.body.folderName || "images")
-            .trim()
-            .replace(/^\/+|\/+$/g, "");
+        if (!validateFolderName(folderName)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid folder name. Use letters, numbers, underscore or hyphen."
+            });
+        }
 
-        // Get original filename or custom filename
+        // Original filename or custom filename
         let fileName = req.body.fileName && req.body.fileName.trim() !== ""
             ? req.body.fileName.trim()
-            : req.file.originalname;
+            : path.basename(req.file.originalname);
 
+        // Prevent directory traversal
         fileName = path.basename(fileName);
 
         // Preserve original extension if custom extension is missing
@@ -73,15 +105,56 @@ router.post("/upload", upload.single("image"), async (req, res) => {
             fileName += path.extname(req.file.originalname);
         }
 
-        if (!folderName || !fileName) {
+        if (!validateFileName(fileName)) {
             return res.status(400).json({
                 success: false,
-                message: "Folder name and filename are required"
+                message: "Invalid filename. Only JPG, JPEG, PNG and WEBP files are allowed."
             });
         }
 
-        // Create S3 key
+        // Check filename extension matches actual image MIME type
+        const allowedExtensions = {
+            "image/jpeg": [".jpg", ".jpeg"],
+            "image/png": [".png"],
+            "image/webp": [".webp"]
+        };
+
+        const extension = path.extname(fileName).toLowerCase();
+
+        if (!allowedExtensions[req.file.mimetype].includes(extension)) {
+            return res.status(400).json({
+                success: false,
+                message: "Filename extension does not match uploaded image type."
+            });
+        }
+
         const imageKey = `${folderName}/${fileName}`;
+
+        // Check if file already exists
+        let fileExists = false;
+
+        try {
+            await s3.send(new HeadObjectCommand({
+                Bucket: BUCKET,
+                Key: imageKey
+            }));
+
+            fileExists = true;
+
+        } catch (error) {
+            if (error.name !== "NotFound" &&
+                error.$metadata?.httpStatusCode !== 404) {
+                throw error;
+            }
+        }
+
+        if (fileExists) {
+            return res.status(409).json({
+                success: false,
+                message: "File already exists. Please use another filename.",
+                imageKey: imageKey
+            });
+        }
 
         await s3.send(new PutObjectCommand({
             Bucket: BUCKET,
@@ -95,6 +168,7 @@ router.post("/upload", upload.single("image"), async (req, res) => {
             message: "Image uploaded successfully",
             bucket: BUCKET,
             folderName: folderName,
+            originalFileName: req.file.originalname,
             fileName: fileName,
             imageKey: imageKey
         });
@@ -112,12 +186,22 @@ router.post("/upload", upload.single("image"), async (req, res) => {
 
 // ============================================
 // 2. GET IMAGE URL
-// GET /api/s3/image/:key
+// GET /api/s3/image/:folderName/:fileName
 // ============================================
 
-router.get("/images/:key", async (req, res) => {
+router.get("/image/:folderName/:fileName", async (req, res) => {
     try {
-        const key = `images/${req.params.key}`;
+        const { folderName, fileName } = req.params;
+
+        if (!validateFolderName(folderName) ||
+            !validateFileName(fileName)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid folder name or filename"
+            });
+        }
+
+        const key = `${folderName}/${fileName}`;
 
         const command = new GetObjectCommand({
             Bucket: BUCKET,
@@ -130,6 +214,8 @@ router.get("/images/:key", async (req, res) => {
 
         return res.json({
             success: true,
+            folderName: folderName,
+            fileName: fileName,
             imageKey: key,
             imageUrl: imageUrl,
             expiresIn: 3600
@@ -148,25 +234,44 @@ router.get("/images/:key", async (req, res) => {
 
 // ============================================
 // 3. LIST IMAGES
-// GET /api/s3/images
+// GET /api/s3/images?folderName=products
 // ============================================
 
 router.get("/images", async (req, res) => {
     try {
+        const folderName = (req.query.folderName || "images").trim();
+
+        if (!validateFolderName(folderName)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid folder name"
+            });
+        }
+
+        const limit = Math.min(
+            Math.max(parseInt(req.query.limit) || 100, 1),
+            1000
+        );
+
+        const continuationToken = req.query.continuationToken || undefined;
+
         const result = await s3.send(new ListObjectsV2Command({
             Bucket: BUCKET,
-            Prefix: "images/",
-            MaxKeys: 100
+            Prefix: `${folderName}/`,
+            MaxKeys: limit,
+            ContinuationToken: continuationToken
         }));
 
         const images = (result.Contents || []).map(item => ({
             imageKey: item.Key,
+            fileName: item.Key.split("/").pop(),
             size: item.Size,
             lastModified: item.LastModified
         }));
 
         return res.json({
             success: true,
+            folderName: folderName,
             count: images.length,
             images: images,
             nextContinuationToken: result.NextContinuationToken || null
@@ -185,12 +290,22 @@ router.get("/images", async (req, res) => {
 
 // ============================================
 // 4. DELETE IMAGE
-// DELETE /api/s3/image/:key
+// DELETE /api/s3/image/:folderName/:fileName
 // ============================================
 
-router.delete("/images/:key", async (req, res) => {
+router.delete("/image/:folderName/:fileName", async (req, res) => {
     try {
-        const key = `images/${req.params.key}`;
+        const { folderName, fileName } = req.params;
+
+        if (!validateFolderName(folderName) ||
+            !validateFileName(fileName)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid folder name or filename"
+            });
+        }
+
+        const key = `${folderName}/${fileName}`;
 
         await s3.send(new DeleteObjectCommand({
             Bucket: BUCKET,
@@ -219,11 +334,11 @@ router.delete("/images/:key", async (req, res) => {
 // ============================================
 
 router.use((error, req, res, next) => {
-    console.error("Upload Validation Error:", error);
+    console.error("S3 Validation Error:", error);
 
     return res.status(400).json({
         success: false,
-        message: error.message
+        message: error.message || "Invalid upload request"
     });
 });
 
