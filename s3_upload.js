@@ -54,13 +54,31 @@ router.post("/upload", upload.single("image"), async (req, res) => {
             });
         }
 
-        const extension = {
-            "image/jpeg": "jpg",
-            "image/png": "png",
-            "image/webp": "webp"
-        }[req.file.mimetype];
+        const path = require("path");
 
-        const imageKey = `images/${crypto.randomUUID()}.${extension}`;
+        // Get original filename and extension
+        const originalName = path.basename(req.file.originalname);
+        const originalExtension = path.extname(originalName);
+
+        // Get custom filename if provided
+        let fileName = req.body.fileName
+            ? path.basename(req.body.fileName.trim())
+            : originalName;
+
+        // Add original extension if custom filename has no extension
+        if (!path.extname(fileName)) {
+            fileName += originalExtension;
+        }
+
+        // Validate filename
+        if (!fileName || fileName === originalExtension) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid filename"
+            });
+        }
+
+        const imageKey = `images/${fileName}`;
 
         await s3.send(new PutObjectCommand({
             Bucket: BUCKET,
@@ -75,6 +93,8 @@ router.post("/upload", upload.single("image"), async (req, res) => {
             success: true,
             message: "Image uploaded successfully",
             bucket: BUCKET,
+            originalFileName: originalName,
+            uploadedFileName: fileName,
             imageKey: imageKey
         });
 
