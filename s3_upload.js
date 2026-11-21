@@ -114,7 +114,7 @@ router.post("/upload", upload.single("image"), async (req, res) => {
 // GET /api/s3/image/:key
 // ============================================
 
-router.get("/image/:key", async (req, res) => {
+router.get("/images/:key", async (req, res) => {
     try {
         const key = `images/${req.params.key}`;
 
@@ -187,7 +187,7 @@ router.get("/images", async (req, res) => {
 // DELETE /api/s3/image/:key
 // ============================================
 
-router.delete("/image/:key", async (req, res) => {
+router.delete("/images/:key", async (req, res) => {
     try {
         const key = `images/${req.params.key}`;
 
