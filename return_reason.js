@@ -1,6 +1,7 @@
 
 const express = require("express");
 const router = express.Router();
+
 const db = require("./db");
 const authenticateToken = require("./auth_middleware");
 
@@ -25,14 +26,10 @@ router.get("/get", authenticateToken, async (req, res) => {
 
         const {
             REASON_ID = "-1",
-            REASON = "-1",
-            LIMIT = "10",
-            OFFSET = "0"
+            REASON = "-1"
         } = req.query;
 
         const reasonId = Number(REASON_ID);
-        const limit = Number(LIMIT);
-        const offset = Number(OFFSET);
 
         if (
             !Number.isSafeInteger(reasonId) ||
@@ -44,34 +41,22 @@ router.get("/get", authenticateToken, async (req, res) => {
             });
         }
 
-        if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
-            return res.status(400).json({
-                success: false,
-                message: "LIMIT must be between 1 and 100"
-            });
-        }
-
-        if (!Number.isSafeInteger(offset) || offset < 0) {
-            return res.status(400).json({
-                success: false,
-                message: "OFFSET must be zero or a positive integer"
-            });
-        }
+        const reason = typeof REASON === "string"
+            ? REASON.trim()
+            : "-1";
 
         const [result] = await db.query(
-            "CALL sp_m_return_reasons_get(?, ?, ?, ?)",
-            [
-                reasonId,
-                typeof REASON === "string" ? REASON.trim() : "-1",
-                limit,
-                offset
-            ]
+            "CALL sp_m_return_reasons_get(?, ?)",
+            [reasonId, reason]
         );
+
+        const rows = result[0] || [];
 
         return res.status(200).json({
             success: true,
             message: "Return reasons fetched successfully",
-            data: result[0]
+            count: rows.length,
+            data: rows
         });
 
     } catch (error) {

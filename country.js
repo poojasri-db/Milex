@@ -11,9 +11,7 @@ const db = require("./db");
 
 router.get("/get", async (req, res) => {
     try {
-        const {
-            COUNTRY_ID = "-1"
-        } = req.query;
+        const { COUNTRY_ID = "-1" } = req.query;
 
         const countryId = Number(COUNTRY_ID);
 
@@ -32,10 +30,15 @@ router.get("/get", async (req, res) => {
             [countryId]
         );
 
+        const rows = result[0] || [];
+
         return res.status(200).json({
             STATUS: "SUCCESS",
-            MESSAGE: "Country details retrieved successfully",
-            DATA: result[0] || []
+            MESSAGE: rows.length
+                ? "Country details retrieved successfully"
+                : "No country details found",
+            COUNT: rows.length,
+            DATA: rows
         });
 
     } catch (error) {

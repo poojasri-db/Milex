@@ -23,15 +23,9 @@ router.get("/get", authenticateToken, async (req, res) => {
             });
         }
 
-        const {
-            ORDER_STATUS_ID = "-1",
-            LIMIT = "10",
-            OFFSET = "0"
-        } = req.query;
+        const { ORDER_STATUS_ID = "-1" } = req.query;
 
         const orderStatusId = Number(ORDER_STATUS_ID);
-        const limit = Number(LIMIT);
-        const offset = Number(OFFSET);
 
         if (
             !Number.isSafeInteger(orderStatusId) ||
@@ -43,33 +37,20 @@ router.get("/get", authenticateToken, async (req, res) => {
             });
         }
 
-        if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
-            return res.status(400).json({
-                status: "FAILED",
-                message: "LIMIT must be between 1 and 100"
-            });
-        }
-
-        if (!Number.isSafeInteger(offset) || offset < 0) {
-            return res.status(400).json({
-                status: "FAILED",
-                message: "OFFSET must be zero or a positive integer"
-            });
-        }
-
         const [result] = await db.query(
-            "CALL sp_m_order_status_get(?, ?, ?)",
-            [
-                orderStatusId,
-                limit,
-                offset
-            ]
+            "CALL sp_m_order_status_get(?)",
+            [orderStatusId]
         );
+
+        const rows = result[0] || [];
 
         return res.status(200).json({
             status: "SUCCESS",
-            message: "Order status details fetched successfully",
-            data: result[0] || []
+            message: rows.length
+                ? "Order status details fetched successfully"
+                : "No order status details found",
+            count: rows.length,
+            data: rows
         });
 
     } catch (error) {

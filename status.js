@@ -1,11 +1,13 @@
+
 const express = require("express");
 const router = express.Router();
+
 const db = require("./db");
 const authenticateToken = require("./auth_middleware");
 
 // ==========================================
 // GET STATUS
-// GET /api/status/get/:id?limit=10&offset=0
+// GET /api/status/get/:id
 // Use -1 to get all records
 // Access: ADMIN, SELLER, CUSTOMER
 // ==========================================
@@ -25,22 +27,14 @@ router.get("/get/:id", authenticateToken, async (req, res) => {
             });
         }
 
-        // QUERY PARAMETERS
-        const STATUS_ID = Number(req.params.id);
+        // STATUS ID
+        const STATUS_ID = String(req.params.id).trim();
 
-        const LIMIT = req.query.limit === undefined
-            ? 10
-            : Number(req.query.limit);
-
-        const OFFSET = req.query.offset === undefined
-            ? 0
-            : Number(req.query.offset);
-
-        // STATUS ID VALIDATION
+        // VALIDATION
         if (
-            !Number.isSafeInteger(STATUS_ID) ||
-            STATUS_ID < -1 ||
-            STATUS_ID === 0
+            !/^-?\d+$/.test(STATUS_ID) ||
+            !Number.isSafeInteger(Number(STATUS_ID)) ||
+            (Number(STATUS_ID) !== -1 && Number(STATUS_ID) <= 0)
         ) {
             return res.status(400).json({
                 STATUS: "ERROR",
@@ -48,28 +42,10 @@ router.get("/get/:id", authenticateToken, async (req, res) => {
             });
         }
 
-        // LIMIT AND OFFSET VALIDATION
-        if (
-            !Number.isSafeInteger(LIMIT) ||
-            LIMIT <= 0 ||
-            LIMIT > 100 ||
-            !Number.isSafeInteger(OFFSET) ||
-            OFFSET < 0
-        ) {
-            return res.status(400).json({
-                STATUS: "ERROR",
-                MESSAGE: "LIMIT must be between 1 and 100 and OFFSET must be zero or greater"
-            });
-        }
-
         // DATABASE CALL
         const [result] = await db.query(
-            "CALL sp_m_status_get(?, ?, ?)",
-            [
-                STATUS_ID,
-                LIMIT,
-                OFFSET
-            ]
+            "CALL sp_m_status_get(?)",
+            [STATUS_ID]
         );
 
         const rows = result?.[0] || [];
@@ -79,6 +55,7 @@ router.get("/get/:id", authenticateToken, async (req, res) => {
             MESSAGE: rows.length
                 ? "Status retrieved successfully"
                 : "No status found",
+            COUNT: rows.length,
             DATA: rows
         });
 

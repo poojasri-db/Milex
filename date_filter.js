@@ -10,16 +10,9 @@ const db = require("./db");
 
 router.get("/get", async (req, res) => {
     try {
-
-        const {
-            DATE_FILTER_ID = "-1",
-            LIMIT = "10",
-            OFFSET = "0"
-        } = req.query;
+        const { DATE_FILTER_ID = "-1" } = req.query;
 
         const dateFilterId = Number(DATE_FILTER_ID);
-        const limit = Number(LIMIT);
-        const offset = Number(OFFSET);
 
         if (
             !Number.isSafeInteger(dateFilterId) ||
@@ -31,37 +24,23 @@ router.get("/get", async (req, res) => {
             });
         }
 
-        if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
-            return res.status(400).json({
-                status: "FAILED",
-                message: "LIMIT must be between 1 and 100"
-            });
-        }
-
-        if (!Number.isSafeInteger(offset) || offset < 0) {
-            return res.status(400).json({
-                status: "FAILED",
-                message: "OFFSET must be zero or a positive integer"
-            });
-        }
-
         const [result] = await db.query(
-            "CALL sp_m_date_filter_get(?,?,?)",
-            [
-                dateFilterId,
-                limit,
-                offset
-            ]
+            "CALL sp_m_date_filter_get(?)",
+            [dateFilterId]
         );
+
+        const rows = result[0] || [];
 
         return res.status(200).json({
             status: "SUCCESS",
-            message: "Date filter details fetched successfully",
-            data: result[0] || []
+            message: rows.length
+                ? "Date filter details fetched successfully"
+                : "No date filter details found",
+            count: rows.length,
+            data: rows
         });
 
     } catch (error) {
-
         console.error("GET DATE FILTER API ERROR:", error);
 
         return res.status(500).json({

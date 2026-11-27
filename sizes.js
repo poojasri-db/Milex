@@ -1,5 +1,7 @@
+
 const express = require("express");
 const router = express.Router();
+
 const db = require("./db");
 const authenticateToken = require("./auth_middleware");
 
@@ -25,19 +27,13 @@ router.get("/get", authenticateToken, async (req, res) => {
         }
 
         // QUERY PARAMETERS
-        const {
-            SIZE_ID = "-1",
-            LIMIT = "10",
-            OFFSET = "0"
-        } = req.query;
+        const { SIZE_ID = "-1" } = req.query;
 
         const sizeId = Number(SIZE_ID);
-        const limit = Number(LIMIT);
-        const offset = Number(OFFSET);
 
         // VALIDATION
         if (
-            !Number.isInteger(sizeId) ||
+            !Number.isSafeInteger(sizeId) ||
             (sizeId !== -1 && sizeId <= 0)
         ) {
             return res.status(400).json({
@@ -46,40 +42,18 @@ router.get("/get", authenticateToken, async (req, res) => {
             });
         }
 
-        if (
-            !Number.isInteger(limit) ||
-            limit < 1 ||
-            limit > 100
-        ) {
-            return res.status(400).json({
-                status: "FAILED",
-                message: "LIMIT must be between 1 and 100"
-            });
-        }
-
-        if (
-            !Number.isInteger(offset) ||
-            offset < 0
-        ) {
-            return res.status(400).json({
-                status: "FAILED",
-                message: "OFFSET must be zero or a positive integer"
-            });
-        }
-
         // DATABASE CALL
         const [result] = await db.query(
-            "CALL sp_m_sizes_get(?,?,?)",
-            [
-                sizeId,
-                limit,
-                offset
-            ]
+            "CALL sp_m_sizes_get(?)",
+            [sizeId]
         );
+
+        const rows = result[0] || [];
 
         return res.status(200).json({
             status: "SUCCESS",
-            data: result[0] || []
+            count: rows.length,
+            data: rows
         });
 
     } catch (error) {

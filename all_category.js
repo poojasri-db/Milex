@@ -1,3 +1,4 @@
+
 const express = require("express");
 const router = express.Router();
 const db = require("./db");
@@ -5,19 +6,23 @@ const db = require("./db");
 // ==========================================
 // GET ALL CATEGORY NAMES
 // GET /api/category/get
+// PUBLIC API - NO TOKEN REQUIRED
 // ==========================================
 
 router.get("/get", async (req, res) => {
     try {
         const [result] = await db.query(
-            "CALL sp_m_category_get(?, ?, ?)",
-            [-1, 100, 0]
+            "CALL sp_m_category_get(?)",
+            ["-1"]
         );
+
+        const rows = result[0] || [];
 
         return res.status(200).json({
             status: "SUCCESS",
             message: "Category names fetched successfully",
-            data: result[0] || []
+            count: rows.length,
+            data: rows
         });
 
     } catch (error) {

@@ -52,6 +52,12 @@ const paymentmethod = require("./payment_method");
 const placeorder = require("./place_order");
 const sellerorders = require("./seller_orders");
 const customerorders = require("./customer_orders");
+const tracking = require("./tracking");
+const shipping = require("./shipping");
+const return_status = require("./return_status");
+const return_dropdown = require("./return_dropdown");
+const refund_method = require("./refund_method");
+const refund = require("./refund");
 
 
 
@@ -103,7 +109,13 @@ app.use("/api/place_order", placeorder);
 app.use("/api/seller_orders", sellerorders);
 app.use("/api/customer_orders", customerorders);
 app.use("/api/s3", s3Routes);
- 
+app.use("/api/tracking", tracking);
+app.use("/api/shipping", shipping);
+app.use("/api/return_status", return_status);
+app.use("/api/return_dropdown", return_dropdown);
+app.use("/api/refund_method", refund_method);
+app.use("/api/refund", refund);
+
 
 const PORT = process.env.PORT || 81;
 

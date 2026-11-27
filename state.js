@@ -23,7 +23,7 @@ router.get("/get", async (req, res) => {
 
         // VALIDATION
         if (
-            !Number.isInteger(stateId) ||
+            !Number.isSafeInteger(stateId) ||
             (stateId !== -1 && stateId <= 0)
         ) {
             return res.status(400).json({
@@ -33,7 +33,7 @@ router.get("/get", async (req, res) => {
         }
 
         if (
-            !Number.isInteger(countryId) ||
+            !Number.isSafeInteger(countryId) ||
             (countryId !== -1 && countryId <= 0)
         ) {
             return res.status(400).json({
@@ -45,16 +45,16 @@ router.get("/get", async (req, res) => {
         // DATABASE CALL
         const [result] = await db.query(
             "CALL sp_m_state_get(?, ?)",
-            [
-                stateId,
-                countryId
-            ]
+            [stateId, countryId]
         );
+
+        const rows = result[0] || [];
 
         return res.status(200).json({
             status: "SUCCESS",
             message: "State details fetched successfully",
-            data: result[0] || []
+            count: rows.length,
+            data: rows
         });
 
     } catch (error) {

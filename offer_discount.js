@@ -5,35 +5,38 @@ const db = require("./db");
 const authenticateToken = require("./auth_middleware");
 
 // ==========================================
-// ADMIN AUTHORIZATION
+// ROLE AUTHORIZATION
 // ==========================================
 
-const adminOnly = (req, res, next) => {
+const allowRoles = (...roles) => {
+    return (req, res, next) => {
 
-    if (
-        String(req.user.USER_TYPE || "").trim().toUpperCase() !== "ADMIN"
-    ) {
-        return res.status(403).json({
-            status: "FAILED",
-            message: "Access denied. Admin only."
-        });
-    }
+        const userType = String(req.user?.USER_TYPE || "")
+            .trim()
+            .toUpperCase();
 
-    next();
+        if (!roles.includes(userType)) {
+            return res.status(403).json({
+                status: "FAILED",
+                message: "Access denied. You are not authorized."
+            });
+        }
+
+        next();
+    };
 };
 
-// Apply authentication and admin authorization
-// to all routes below
+// Apply authentication to all routes
 router.use(authenticateToken);
-router.use(adminOnly);
 
 
 // ==========================================
 // INSERT OFFER
+// ADMIN, SELLER
 // POST /api/offers-discounts/insert
 // ==========================================
 
-router.post("/insert", async (req, res) => {
+router.post("/insert", allowRoles("ADMIN", "SELLER"), async (req, res) => {
     try {
 
         const {
@@ -45,13 +48,12 @@ router.post("/insert", async (req, res) => {
             MAXIMUM_DISCOUNT,
             START_DATE,
             END_DATE,
-            PRODUCT_ID,
-            CATEGORY_ID,
-            STATUS
+            PRODUCT_IDS,
+            CATEGORY_IDS
         } = req.body || {};
 
         await db.query(
-            "CALL sp_m_offers_discounts_insert(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "CALL sp_m_offers_discounts_insert(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 OFFER_NAME,
                 OFFER_CODE,
@@ -61,9 +63,8 @@ router.post("/insert", async (req, res) => {
                 MAXIMUM_DISCOUNT,
                 START_DATE,
                 END_DATE,
-                PRODUCT_ID,
-                CATEGORY_ID,
-                STATUS,
+                JSON.stringify(PRODUCT_IDS || []),
+                JSON.stringify(CATEGORY_IDS || []),
                 req.user.USER_ID
             ]
         );
@@ -86,10 +87,11 @@ router.post("/insert", async (req, res) => {
 
 // ==========================================
 // UPDATE OFFER
+// ADMIN, SELLER
 // PUT /api/offers-discounts/update
 // ==========================================
 
-router.put("/update", async (req, res) => {
+router.put("/update", allowRoles("ADMIN", "SELLER"), async (req, res) => {
     try {
 
         const {
@@ -102,10 +104,17 @@ router.put("/update", async (req, res) => {
             MAXIMUM_DISCOUNT,
             START_DATE,
             END_DATE,
-            PRODUCT_ID,
-            CATEGORY_ID,
+            PRODUCT_IDS,
+            CATEGORY_IDS,
             STATUS
         } = req.body || {};
+
+        if (!OFFER_ID || Number(OFFER_ID) <= 0) {
+            return res.status(400).json({
+                status: "FAILED",
+                message: "Valid OFFER_ID is required"
+            });
+        }
 
         await db.query(
             "CALL sp_m_offers_discounts_update(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -119,8 +128,8 @@ router.put("/update", async (req, res) => {
                 MAXIMUM_DISCOUNT,
                 START_DATE,
                 END_DATE,
-                PRODUCT_ID,
-                CATEGORY_ID,
+                JSON.stringify(PRODUCT_IDS || []),
+                JSON.stringify(CATEGORY_IDS || []),
                 STATUS,
                 req.user.USER_ID
             ]
@@ -144,16 +153,27 @@ router.put("/update", async (req, res) => {
 
 // ==========================================
 // GET OFFERS
+// ADMIN, SELLER, CUSTOMER
 // GET /api/offers-discounts/get
 // ==========================================
 
-router.get("/get", async (req, res) => {
+router.get("/get", allowRoles("ADMIN", "SELLER", "CUSTOMER"), async (req, res) => {
     try {
 
         const OFFER_ID =
             req.query.OFFER_ID !== undefined
                 ? req.query.OFFER_ID
                 : -1;
+
+        const LIMIT =
+            req.query.LIMIT !== undefined
+                ? req.query.LIMIT
+                : 10;
+
+        const OFFSET =
+            req.query.OFFSET !== undefined
+                ? req.query.OFFSET
+                : 0;
 
         if (!/^-1$|^[0-9]+$/.test(String(OFFER_ID))) {
             return res.status(400).json({
@@ -162,9 +182,27 @@ router.get("/get", async (req, res) => {
             });
         }
 
+        if (!/^[0-9]+$/.test(String(LIMIT)) || Number(LIMIT) <= 0) {
+            return res.status(400).json({
+                status: "FAILED",
+                message: "Invalid LIMIT"
+            });
+        }
+
+        if (!/^[0-9]+$/.test(String(OFFSET))) {
+            return res.status(400).json({
+                status: "FAILED",
+                message: "Invalid OFFSET"
+            });
+        }
+
         const [result] = await db.query(
-            "CALL sp_m_offers_discounts_get(?)",
-            [OFFER_ID]
+            "CALL sp_m_offers_discounts_get(?, ?, ?)",
+            [
+                OFFER_ID,
+                Number(LIMIT),
+                Number(OFFSET)
+            ]
         );
 
         return res.status(200).json({
@@ -185,22 +223,23 @@ router.get("/get", async (req, res) => {
 
 // ==========================================
 // DELETE OFFER
+// ADMIN, SELLER
 // DELETE /api/offers-discounts/delete
 // ==========================================
 
-router.delete("/delete", async (req, res) => {
+router.delete("/delete", allowRoles("ADMIN", "SELLER"), async (req, res) => {
     try {
 
         const { OFFER_ID } = req.body || {};
 
         if (
-            OFFER_ID === undefined ||
+            !OFFER_ID ||
             !/^[0-9]+$/.test(String(OFFER_ID)) ||
             Number(OFFER_ID) <= 0
         ) {
             return res.status(400).json({
                 status: "FAILED",
-                message: "Valid OFFER_ID is required"
+                message: "Invalid OFFER_ID"
             });
         }
 
@@ -211,7 +250,7 @@ router.delete("/delete", async (req, res) => {
 
         return res.status(200).json({
             status: "SUCCESS",
-            message: "Offer deleted successfully"
+            message: "Offer deactivated successfully"
         });
 
     } catch (error) {
@@ -223,5 +262,6 @@ router.delete("/delete", async (req, res) => {
 
     }
 });
+
 
 module.exports = router;

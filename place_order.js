@@ -1,18 +1,21 @@
+
 const express = require("express");
 const router = express.Router();
 const db = require("./db");
 const authenticateToken = require("./auth_middleware");
 
+// ==========================================
+// PLACE ORDER API
+// ==========================================
+
 router.post("/", authenticateToken, async (req, res) => {
     try {
-        // Get logged-in user details from JWT
         const USER_ID = req.user.USER_ID || req.user.sub;
         const CUSTOMER_ID = req.user.CUSTOMER_ID;
         const USER_TYPE = String(
             req.user.role || req.user.USER_TYPE || ""
         ).toUpperCase();
 
-        // Only customers can place orders
         if (USER_TYPE !== "CUSTOMER") {
             return res.status(403).json({
                 success: false,
@@ -34,7 +37,6 @@ router.post("/", authenticateToken, async (req, res) => {
             });
         }
 
-        // Request body
         const {
             CART_ID = 0,
             DELIVERY_ADDRESS_ID,
@@ -43,7 +45,6 @@ router.post("/", authenticateToken, async (req, res) => {
             SHIPPING_CHARGES = 0
         } = req.body;
 
-        // Validate required fields
         if (!DELIVERY_ADDRESS_ID || !BILLING_ADDRESS_ID || !PAYMENT_METHOD) {
             return res.status(400).json({
                 success: false,
@@ -51,7 +52,6 @@ router.post("/", authenticateToken, async (req, res) => {
             });
         }
 
-        // Call stored procedure
         const [result] = await db.query(
             `CALL sp_o_place_order(?, ?, ?, ?, ?, ?, ?)`,
             [
@@ -82,6 +82,87 @@ router.post("/", authenticateToken, async (req, res) => {
         return res.status(500).json({
             success: false,
             message: error.sqlMessage || error.message || "Failed to place order"
+        });
+    }
+});
+
+
+// ==========================================
+// UPDATE ORDER API
+// ==========================================
+
+router.put('/update', authenticateToken, async (req, res) => {
+    try {
+        if (!req.user) {
+            return res.status(401).json({
+                status: false,
+                message: 'Authentication required'
+            });
+        }
+
+        const {
+            ORDER_ID,
+            ORDER_STATUS,
+            PAYMENT_STATUS,
+            SHIPPING_STATUS
+        } = req.body;
+
+        if (
+            !ORDER_ID ||
+            ORDER_STATUS === undefined ||
+            PAYMENT_STATUS === undefined ||
+            SHIPPING_STATUS === undefined
+        ) {
+            return res.status(400).json({
+                status: false,
+                message: 'ORDER_ID, ORDER_STATUS, PAYMENT_STATUS and SHIPPING_STATUS are required'
+            });
+        }
+
+        // Get authenticated user details
+        const USER_ID = req.user.USER_ID || req.user.sub;
+
+        const userType = String(
+            req.user.role || req.user.USER_TYPE || ''
+        ).trim().toUpperCase();
+
+        // Allow ADMIN and SELLER
+        if (!['ADMIN', 'SELLER'].includes(userType)) {
+            return res.status(403).json({
+                status: false,
+                message: 'Only admins and sellers can update orders'
+            });
+        }
+
+        if (!USER_ID) {
+            return res.status(400).json({
+                status: false,
+                message: 'User ID not found in login token'
+            });
+        }
+
+        const [result] = await db.query(
+            'CALL sp_o_place_orders_update(?, ?, ?, ?, ?)',
+            [
+                ORDER_ID,
+                ORDER_STATUS,
+                PAYMENT_STATUS,
+                SHIPPING_STATUS,
+                USER_ID
+            ]
+        );
+
+        return res.status(200).json({
+            status: true,
+            message: 'Order updated successfully'
+        });
+
+    } catch (error) {
+        console.error('UPDATE ORDER ERROR:', error);
+
+        return res.status(400).json({
+            status: false,
+            message: error.sqlMessage || error.message
         });
     }
 });

@@ -93,6 +93,7 @@ router.put("/update", authenticateToken, async (req, res) => {
 // CUSTOMER ONLY
 // ==========================================
 
+
 router.get("/get", authenticateToken, async (req, res) => {
     try {
         const userType = String(req.user.USER_TYPE || "")
@@ -120,6 +121,7 @@ router.get("/get", authenticateToken, async (req, res) => {
             PRODUCT_ID = "-1",
             CATEGORY_ID = "-1",
             SELLER_ID = "-1",
+            PRODUCT_VARIANT_ID = "-1",
             LIMIT = 10,
             OFFSET = 0
         } = req.query;
@@ -132,6 +134,7 @@ router.get("/get", authenticateToken, async (req, res) => {
         PRODUCT_ID = Number(PRODUCT_ID);
         CATEGORY_ID = Number(CATEGORY_ID);
         SELLER_ID = Number(SELLER_ID);
+        PRODUCT_VARIANT_ID = Number(PRODUCT_VARIANT_ID);
         LIMIT = Number(LIMIT);
         OFFSET = Number(OFFSET);
 
@@ -140,6 +143,7 @@ router.get("/get", authenticateToken, async (req, res) => {
             !validFilter(PRODUCT_ID) ||
             !validFilter(CATEGORY_ID) ||
             !validFilter(SELLER_ID) ||
+            !validFilter(PRODUCT_VARIANT_ID) ||
             !Number.isInteger(LIMIT) ||
             LIMIT < 1 ||
             LIMIT > 100 ||
@@ -153,12 +157,13 @@ router.get("/get", authenticateToken, async (req, res) => {
         }
 
         const [result] = await db.query(
-            "CALL sp_o_shopping_cart_save_for_later_get(?,?,?,?,?,?,?)",
+            "CALL sp_o_shopping_cart_save_for_later_get(?,?,?,?,?,?,?,?)",
             [
                 CART_ID,
                 PRODUCT_ID,
                 CATEGORY_ID,
                 SELLER_ID,
+                PRODUCT_VARIANT_ID,
                 CUSTOMER_ID,
                 LIMIT,
                 OFFSET
@@ -180,6 +185,7 @@ router.get("/get", authenticateToken, async (req, res) => {
         });
     }
 });
+
 
 
 module.exports = router;

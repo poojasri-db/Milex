@@ -23,44 +23,34 @@ router.get("/get", authenticateToken, async (req, res) => {
             });
         }
 
-        const {
-            MATERIAL_ID = "-1",
-            LIMIT = "10",
-            OFFSET = "0"
-        } = req.query;
+        const { MATERIAL_ID = "-1" } = req.query;
 
         const materialId = Number(MATERIAL_ID);
-        const limit = Number(LIMIT);
-        const offset = Number(OFFSET);
 
         if (
             !Number.isSafeInteger(materialId) ||
-            (materialId !== -1 && materialId <= 0) ||
-            !Number.isInteger(limit) ||
-            limit <= 0 ||
-            limit > 100 ||
-            !Number.isSafeInteger(offset) ||
-            offset < 0
+            (materialId !== -1 && materialId <= 0)
         ) {
             return res.status(400).json({
                 status: "FAILED",
-                message: "Invalid MATERIAL_ID, LIMIT or OFFSET"
+                message: "MATERIAL_ID must be -1 or a positive integer"
             });
         }
 
         const [result] = await db.query(
-            "CALL sp_m_materials_get(?,?,?)",
-            [
-                materialId,
-                limit,
-                offset
-            ]
+            "CALL sp_m_materials_get(?)",
+            [materialId]
         );
+
+        const rows = result[0] || [];
 
         return res.status(200).json({
             status: "SUCCESS",
-            message: "Materials fetched successfully",
-            data: result[0] || []
+            message: rows.length
+                ? "Materials fetched successfully"
+                : "No materials found",
+            count: rows.length,
+            data: rows
         });
 
     } catch (error) {

@@ -55,287 +55,156 @@ const adminOnly = (req, res) => {
 // ADMIN / CUSTOMER
 // ==========================================
 
-router.post("/insert", async (req, res) => {
+
+
+router.post("/", authenticateToken, async (req, res) => {
     try {
-
         const {
+            ORDER_NUMBER,
             ORDER_ID,
-            PRODUCT_ID,
-            QUANTITY,
-            RETURN_REASON,
+            REASON_ID,
             RETURN_DESCRIPTION,
-            RETURN_IMAGES,
-            PICKUP_ADDRESS_ID,
+            RETURN_OPTION,
+            REFUND_METHOD,
+            PRODUCT_ID,
+            VARIANT_ID,
             SELLER_ID,
-            VARIANT_ID
-        } = req.body || {};
+            PICKUP_ADDRESS_ID
+        } = req.body;
 
-        const userType = String(req.user.USER_TYPE || "")
-            .trim()
-            .toUpperCase();
+        const CREATED_BY = req.user.USER_ID || req.user.sub;
 
-        if (!["ADMIN", "CUSTOMER"].includes(userType)) {
-            return res.status(403).json({
-                success: false,
-                message: "Access denied."
-            });
-        }
+        const [result] = await db.query(
+            `CALL sp_o_return_requests_insert(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                ORDER_NUMBER,
+                ORDER_ID,
+                REASON_ID,
+                RETURN_DESCRIPTION || null,
+                RETURN_OPTION,
+                REFUND_METHOD || null,
+                PRODUCT_ID,
+                VARIANT_ID,
+                SELLER_ID,
+                PICKUP_ADDRESS_ID,
+                CREATED_BY
+            ]
+        );
 
-        // ==========================================
-        // VALIDATE REQUIRED FIELDS
-        // ==========================================
+        const response = result[0][0];
 
-        if (
-            !ORDER_ID ||
-            !PRODUCT_ID ||
-            !QUANTITY ||
-            !RETURN_REASON ||
-            !PICKUP_ADDRESS_ID ||
-            !SELLER_ID ||
-            !VARIANT_ID
-        ) {
+        if (response.STATUS === "ERROR") {
             return res.status(400).json({
-                success: false,
-                message: "ORDER_ID, PRODUCT_ID, QUANTITY, RETURN_REASON, PICKUP_ADDRESS_ID, SELLER_ID and VARIANT_ID are required"
+                STATUS: "ERROR",
+                MESSAGE: response.ERROR_MESSAGE
             });
         }
 
-        const orderId = String(ORDER_ID);
-        const productId = String(PRODUCT_ID);
-        const quantity = Number(QUANTITY);
-        const sellerId = String(SELLER_ID);
-        const variantId = String(VARIANT_ID);
-        const pickupAddressId = String(PICKUP_ADDRESS_ID);
+        return res.status(200).json({
+            STATUS: "SUCCESS",
+            MESSAGE: "Return request submitted successfully",
+            DATA: response
+        });
 
-        if (
-            !/^[0-9]+$/.test(orderId) ||
-            !/^[0-9]+$/.test(productId) ||
-            !/^[0-9]+$/.test(sellerId) ||
-            !/^[0-9]+$/.test(variantId) ||
-            !/^[0-9]+$/.test(pickupAddressId) ||
-            Number(orderId) <= 0 ||
-            Number(productId) <= 0 ||
-            Number(sellerId) <= 0 ||
-            Number(variantId) <= 0 ||
-            Number(pickupAddressId) <= 0 ||
-            !Number.isSafeInteger(quantity) ||
-            quantity <= 0
-        ) {
+    } catch (error) {
+        console.error("Return Request Insert Error:", error);
+
+        return res.status(500).json({
+            STATUS: "ERROR",
+            MESSAGE: error.message
+        });
+    }
+});
+
+
+
+
+// UPDATE RETURN REQUEST
+router.put("/update", authenticateToken, async (req, res) => {
+    try {
+        const {
+            RETURN_ID,
+            ACTION,
+            RETURN_STATUS
+        } = req.body;
+
+        const USER_ID = req.user.USER_ID || req.user.sub;
+
+        // Validate RETURN_ID
+        if (!RETURN_ID) {
             return res.status(400).json({
-                success: false,
-                message: "Invalid input values"
+                STATUS: "ERROR",
+                MESSAGE: "RETURN_ID is required"
             });
         }
 
-        // ==========================================
-        // GET CUSTOMER ID
-        // ==========================================
+        // Validate USER_ID
+        if (!USER_ID) {
+            return res.status(400).json({
+                STATUS: "ERROR",
+                MESSAGE: "User ID not found in login token"
+            });
+        }
 
-        let customerId = null;
+        // ACTION is optional for status-only updates
+        let FINAL_ACTION = null;
 
-        if (userType === "CUSTOMER") {
+        if (ACTION !== null && ACTION !== undefined &&
+            String(ACTION).trim() !== "") {
 
-            customerId = await getCustomerId(req.user.USER_ID);
+            FINAL_ACTION = String(ACTION).trim().toUpperCase();
 
-            if (!customerId) {
-                return res.status(403).json({
-                    success: false,
-                    message: "Customer registration not found for this user"
+            if (!["APPROVED", "REJECTED"].includes(FINAL_ACTION)) {
+                return res.status(400).json({
+                    STATUS: "ERROR",
+                    MESSAGE: "ACTION must be APPROVED or REJECTED"
                 });
             }
         }
 
-        // ==========================================
-        // VERIFY ORDER OWNERSHIP AND PRODUCT
-        // ==========================================
-
-        const [orders] = await db.query(
-            `SELECT
-                ORDER_ID,
-                ORDER_NUMBER,
-                CUSTOMER_ID,
-                PRODUCT_ID,
-                QUANTITY
-             FROM o_place_orders
-             WHERE ORDER_ID = ?
-             LIMIT 1`,
-            [orderId]
-        );
-
-        if (!orders.length) {
-            return res.status(404).json({
-                success: false,
-                message: "Order not found"
-            });
-        }
-
-        const order = orders[0];
-
+        // Validate RETURN_STATUS
         if (
-            userType === "CUSTOMER" &&
-            String(order.CUSTOMER_ID) !== String(customerId)
-        ) {
-            return res.status(403).json({
-                success: false,
-                message: "You cannot create a return request for another customer's order"
-            });
-        }
-
-        if (String(order.PRODUCT_ID) !== productId) {
-            return res.status(400).json({
-                success: false,
-                message: "Product does not belong to this order"
-            });
-        }
-
-        if (quantity > Number(order.QUANTITY)) {
-            return res.status(400).json({
-                success: false,
-                message: "Return quantity cannot exceed ordered quantity"
-            });
-        }
-
-        // ==========================================
-        // VERIFY PICKUP ADDRESS OWNERSHIP
-        // ==========================================
-
-        const [addresses] = await db.query(
-            `SELECT ADDRESS_ID
-             FROM o_customer_addresses
-             WHERE ADDRESS_ID = ?
-             AND CUSTOMER_ID = ?
-             LIMIT 1`,
-            [
-                pickupAddressId,
-                order.CUSTOMER_ID
-            ]
-        );
-
-        if (!addresses.length) {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid pickup address for this order's customer"
-            });
-        }
-
-        // ==========================================
-        // INSERT RETURN REQUEST
-        // ADDRESS FETCHED AUTOMATICALLY BY SP
-        // RETURN STATUS ALWAYS PENDING
-        // ==========================================
-
-        const [result] = await db.query(
-            `CALL sp_o_return_requests_insert(
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-            )`,
-            [
-                orderId,
-                productId,
-                quantity,
-                RETURN_REASON,
-                RETURN_DESCRIPTION || null,
-                RETURN_IMAGES || null,
-                pickupAddressId,
-                sellerId,
-                order.CUSTOMER_ID,
-                variantId,
-                "PENDING",
-                req.user.USER_ID
-            ]
-        );
-
-        return res.status(200).json({
-            success: true,
-            message: "Return request created successfully",
-            data: result[0][0] || {}
-        });
-
-    } catch (error) {
-
-        console.error("Return Request Insert Error:", error);
-
-        return res.status(500).json({
-            success: false,
-            message: error.sqlMessage || error.message
-        });
-    }
-});
-
-
-// ==========================================
-// APPROVE / REJECT RETURN REQUEST
-// ==========================================
-
-
-router.put("/update", authenticateToken, async (req, res) => {
-    try {
-
-        const USER_ID = req.user.USER_ID || req.user.sub;
-
-        const USER_TYPE = String(
-            req.user.USER_TYPE || req.user.role || ""
-        ).trim().toUpperCase();
-
-        const { RETURN_ID, RETURN_STATUS } = req.body;
-
-        // Allow ADMIN and SELLER
-        if (!["ADMIN", "SELLER"].includes(USER_TYPE)) {
-            return res.status(403).json({
-                success: false,
-                message: "Only admin and seller can approve or reject return requests"
-            });
-        }
-
-        if (!USER_ID) {
-            return res.status(400).json({
-                success: false,
-                message: "User ID not found"
-            });
-        }
-
-        if (
-            !RETURN_ID ||
-            !Number.isInteger(Number(RETURN_ID)) ||
-            Number(RETURN_ID) <= 0
+            RETURN_STATUS === null ||
+            RETURN_STATUS === undefined ||
+            RETURN_STATUS === ""
         ) {
             return res.status(400).json({
-                success: false,
-                message: "Valid RETURN_ID is required"
+                STATUS: "ERROR",
+                MESSAGE: "RETURN_STATUS is required"
             });
         }
 
-        const status = String(RETURN_STATUS || "")
-            .trim()
-            .toUpperCase();
-
-        if (!["APPROVED", "REJECTED"].includes(status)) {
-            return res.status(400).json({
-                success: false,
-                message: "RETURN_STATUS must be APPROVED or REJECTED"
-            });
-        }
-
+        // Call stored procedure
         const [result] = await db.query(
-            "CALL sp_o_return_requests_update(?, ?, ?)",
+            "CALL sp_o_return_requests_update(?, ?, ?, ?)",
             [
                 RETURN_ID,
-                status,
+                FINAL_ACTION,
+                RETURN_STATUS,
                 USER_ID
             ]
         );
 
+        const response = result[0]?.[0];
+
+        if (response && response.STATUS === "ERROR") {
+            return res.status(400).json({
+                STATUS: "ERROR",
+                MESSAGE: response.MESSAGE
+            });
+        }
+
         return res.status(200).json({
-            success: true,
-            message: `Return request ${status.toLowerCase()} successfully`
+            STATUS: "SUCCESS",
+            MESSAGE: response?.MESSAGE || "Return request updated successfully"
         });
 
     } catch (error) {
-
-        console.error("Return Request Update Error:", error);
+        console.error("UPDATE RETURN REQUEST ERROR:", error);
 
         return res.status(500).json({
-            success: false,
-            message: error.sqlMessage || error.message
+            STATUS: "ERROR",
+            MESSAGE: error.sqlMessage || error.message
         });
     }
 });
@@ -343,46 +212,44 @@ router.put("/update", authenticateToken, async (req, res) => {
 
 
 
+// GET RETURN REQUESTS
 router.get("/get", authenticateToken, async (req, res) => {
     try {
-
-        const USER_TYPE = String(
-            req.user.USER_TYPE || req.user.role || ""
-        ).toUpperCase();
-
-        const SELLER_ID = req.user.SELLER_ID;
-
         const {
             DAYS = 30,
+            SELLER_ID = -1,
             RETURN_STATUS = "-1",
             RETURN_REASON = "-1",
             LIMIT = 10,
             OFFSET = 0
         } = req.query;
 
-        let FILTER_SELLER_ID = -1;
+        // Validate DAYS
+        if (![7, 30, 60, 90, 180].includes(Number(DAYS))) {
+            return res.status(400).json({
+                STATUS: "ERROR",
+                MESSAGE: "Invalid DAYS. Allowed values are 7, 30, 60, 90, 180"
+            });
+        }
 
-        if (USER_TYPE === "SELLER") {
-            if (!SELLER_ID) {
-                return res.status(403).json({
-                    success: false,
-                    message: "Seller ID not found in token"
-                });
-            }
-
-            FILTER_SELLER_ID = SELLER_ID;
-        } else if (USER_TYPE !== "ADMIN") {
-            return res.status(403).json({
-                success: false,
-                message: "Access denied"
+        // Validate LIMIT and OFFSET
+        if (
+            Number(LIMIT) <= 0 ||
+            !Number.isInteger(Number(LIMIT)) ||
+            Number(OFFSET) < 0 ||
+            !Number.isInteger(Number(OFFSET))
+        ) {
+            return res.status(400).json({
+                STATUS: "ERROR",
+                MESSAGE: "Invalid LIMIT or OFFSET"
             });
         }
 
         const [result] = await db.query(
-            `CALL sp_o_return_requests_get(?, ?, ?, ?, ?, ?)`,
+            "CALL sp_o_return_requests_get(?, ?, ?, ?, ?, ?)",
             [
                 Number(DAYS),
-                FILTER_SELLER_ID,
+                Number(SELLER_ID),
                 RETURN_STATUS,
                 RETURN_REASON,
                 Number(LIMIT),
@@ -390,25 +257,28 @@ router.get("/get", authenticateToken, async (req, res) => {
             ]
         );
 
-        const data = result[0] || [];
-        const total = result[1]?.[0]?.TOTAL_RECORDS || 0;
+        const returnRequests = result[0] || [];
+        const totalRecords = result[1]?.[0]?.TOTAL_RECORDS || 0;
 
         return res.status(200).json({
-            success: true,
-            message: "Return requests fetched successfully",
-            total_records: total,
-            data
+            STATUS: "SUCCESS",
+            MESSAGE: "Return requests fetched successfully",
+            TOTAL_RECORDS: totalRecords,
+            LIMIT: Number(LIMIT),
+            OFFSET: Number(OFFSET),
+            DATA: returnRequests
         });
 
     } catch (error) {
-        console.error("Return Request GET Error:", error);
+        console.error("GET RETURN REQUEST ERROR:", error);
 
         return res.status(500).json({
-            success: false,
-            message: error.sqlMessage || error.message
+            STATUS: "ERROR",
+            MESSAGE: error.sqlMessage || error.message
         });
     }
 });
+
 
 
 // ==========================================
@@ -741,6 +611,8 @@ router.get("/export", async (req, res) => {
 
     }
 });
+
+
 
 
 module.exports = router;

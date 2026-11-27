@@ -24,15 +24,12 @@ router.get("/get", authenticateToken, async (req, res) => {
         }
 
         const {
-            PAYMENT_STATUS_ID = "-1",
-            LIMIT = "10",
-            OFFSET = "0"
+            PAYMENT_STATUS_ID = "-1"
         } = req.query;
 
         const paymentStatusId = Number(PAYMENT_STATUS_ID);
-        const limit = Number(LIMIT);
-        const offset = Number(OFFSET);
 
+        // VALIDATION
         if (
             !Number.isSafeInteger(paymentStatusId) ||
             (paymentStatusId !== -1 && paymentStatusId <= 0)
@@ -43,33 +40,19 @@ router.get("/get", authenticateToken, async (req, res) => {
             });
         }
 
-        if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
-            return res.status(400).json({
-                status: "FAILED",
-                message: "LIMIT must be between 1 and 100"
-            });
-        }
-
-        if (!Number.isSafeInteger(offset) || offset < 0) {
-            return res.status(400).json({
-                status: "FAILED",
-                message: "OFFSET must be zero or a positive integer"
-            });
-        }
-
+        // DATABASE CALL
         const [result] = await db.query(
-            "CALL sp_m_payment_status_get(?, ?, ?)",
-            [
-                paymentStatusId,
-                limit,
-                offset
-            ]
+            "CALL sp_m_payment_status_get(?)",
+            [paymentStatusId]
         );
+
+        const responseData = result[0] || [];
 
         return res.status(200).json({
             status: "SUCCESS",
             message: "Payment status details fetched successfully",
-            data: result[0] || []
+            count: responseData.length,
+            data: responseData
         });
 
     } catch (error) {

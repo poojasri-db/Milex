@@ -1,3 +1,4 @@
+
 const express = require("express");
 const router = express.Router();
 const db = require("./db");
@@ -24,16 +25,12 @@ router.get("/get", authenticateToken, async (req, res) => {
             });
         }
 
-        // QUERY PARAMETERS
+        // QUERY PARAMETER
         const {
-            SHIPPING_STATUS_ID = "-1",
-            LIMIT = "10",
-            OFFSET = "0"
+            SHIPPING_STATUS_ID = "-1"
         } = req.query;
 
         const shippingStatusId = Number(SHIPPING_STATUS_ID);
-        const limit = Number(LIMIT);
-        const offset = Number(OFFSET);
 
         // VALIDATION
         if (
@@ -46,41 +43,19 @@ router.get("/get", authenticateToken, async (req, res) => {
             });
         }
 
-        if (
-            !Number.isInteger(limit) ||
-            limit < 1 ||
-            limit > 100
-        ) {
-            return res.status(400).json({
-                status: "FAILED",
-                message: "LIMIT must be between 1 and 100"
-            });
-        }
-
-        if (
-            !Number.isInteger(offset) ||
-            offset < 0
-        ) {
-            return res.status(400).json({
-                status: "FAILED",
-                message: "OFFSET must be zero or a positive integer"
-            });
-        }
-
         // DATABASE CALL
         const [result] = await db.query(
-            "CALL sp_m_shipping_status_get(?, ?, ?)",
-            [
-                shippingStatusId,
-                limit,
-                offset
-            ]
+            "CALL sp_m_shipping_status_get(?)",
+            [shippingStatusId]
         );
+
+        const responseData = result[0] || [];
 
         return res.status(200).json({
             status: "SUCCESS",
             message: "Shipping status details fetched successfully",
-            data: result[0] || []
+            count: responseData.length,
+            data: responseData
         });
 
     } catch (error) {

@@ -32,10 +32,15 @@ router.get("/get", async (req, res) => {
             [businessTypeId]
         );
 
+        const rows = result[0] || [];
+
         return res.status(200).json({
             STATUS: "SUCCESS",
-            MESSAGE: "Business type details retrieved successfully",
-            DATA: result[0] || []
+            MESSAGE: rows.length
+                ? "Business type details retrieved successfully"
+                : "No business types found",
+            COUNT: rows.length,
+            DATA: rows
         });
 
     } catch (error) {

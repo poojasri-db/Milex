@@ -1,5 +1,7 @@
+
 const express = require("express");
 const router = express.Router();
+
 const db = require("./db");
 const authenticateToken = require("./auth_middleware");
 
@@ -25,15 +27,9 @@ router.get("/get", authenticateToken, async (req, res) => {
         }
 
         // QUERY PARAMETERS
-        const {
-            TAX_RATE_ID = "-1",
-            LIMIT = "10",
-            OFFSET = "0"
-        } = req.query;
+        const { TAX_RATE_ID = "-1" } = req.query;
 
         const taxRateId = Number(TAX_RATE_ID);
-        const limit = Number(LIMIT);
-        const offset = Number(OFFSET);
 
         // VALIDATION
         if (
@@ -46,41 +42,19 @@ router.get("/get", authenticateToken, async (req, res) => {
             });
         }
 
-        if (
-            !Number.isSafeInteger(limit) ||
-            limit < 1 ||
-            limit > 100
-        ) {
-            return res.status(400).json({
-                status: "FAILED",
-                message: "LIMIT must be between 1 and 100"
-            });
-        }
-
-        if (
-            !Number.isSafeInteger(offset) ||
-            offset < 0
-        ) {
-            return res.status(400).json({
-                status: "FAILED",
-                message: "OFFSET must be zero or a positive integer"
-            });
-        }
-
         // DATABASE CALL
         const [result] = await db.query(
-            "CALL sp_m_tax_rate_get(?, ?, ?)",
-            [
-                taxRateId,
-                limit,
-                offset
-            ]
+            "CALL sp_m_tax_rate_get(?)",
+            [taxRateId]
         );
+
+        const rows = result[0] || [];
 
         return res.status(200).json({
             status: "SUCCESS",
             message: "Tax rate details fetched successfully",
-            data: result[0] || []
+            count: rows.length,
+            data: rows
         });
 
     } catch (error) {
