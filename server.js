@@ -58,6 +58,10 @@ const return_status = require("./return_status");
 const return_dropdown = require("./return_dropdown");
 const refund_method = require("./refund_method");
 const refund = require("./refund");
+const search = require("./search");
+const admincat = require("./admincat");
+const adminbrand = require("./adminbrand");
+const adminsubcat = require("./adminsubcat");
 
 
 
@@ -115,6 +119,10 @@ app.use("/api/return_status", return_status);
 app.use("/api/return_dropdown", return_dropdown);
 app.use("/api/refund_method", refund_method);
 app.use("/api/refund", refund);
+app.use("/api/search", search);
+app.use("/api/admincat", admincat);
+app.use("/api/adminbrand", adminbrand);
+app.use("/api/adminsubcat", adminsubcat);
 
 
 const PORT = process.env.PORT || 81;

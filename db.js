@@ -1,10 +1,10 @@
 const mysql = require('mysql2/promise');
 
 const db = mysql.createPool({
-    host: 'localhost',
+    host: '52.66.31.32',
     user: 'sqlyog_user',
-    password: 'pooja@123',
-    database: 'ecom_milex_new',
+    password: 'mysql@123',
+    database: 'Ecom_milex',
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0

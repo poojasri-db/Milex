@@ -57,6 +57,7 @@ const adminOnly = (req, res) => {
 
 
 
+
 router.post("/", authenticateToken, async (req, res) => {
     try {
         const {
@@ -93,16 +94,18 @@ router.post("/", authenticateToken, async (req, res) => {
 
         const response = result[0][0];
 
-        if (response.STATUS === "ERROR") {
+        if (!response || response.STATUS === "ERROR") {
             return res.status(400).json({
                 STATUS: "ERROR",
-                MESSAGE: response.ERROR_MESSAGE
+                MESSAGE: response?.ERROR_MESSAGE || "Request failed"
             });
         }
 
         return res.status(200).json({
             STATUS: "SUCCESS",
-            MESSAGE: "Return request submitted successfully",
+            MESSAGE: Number(RETURN_OPTION) === 1
+                ? "Replacement order created successfully"
+                : "Refund request submitted successfully",
             DATA: response
         });
 
@@ -115,6 +118,7 @@ router.post("/", authenticateToken, async (req, res) => {
         });
     }
 });
+
 
 
 
